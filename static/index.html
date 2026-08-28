@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TruthLens AI</title>
+<link rel="stylesheet" href="/static/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <span class="brand-mark">TL</span>
+      <span class="brand-name">TruthLens AI</span>
+    </div>
+
+    <button id="new-topic-sidebar-btn" class="btn btn-primary sidebar-new-btn">+ New Topic</button>
+
+    <div class="sidebar-section-label">History</div>
+    <p id="history-empty" class="sidebar-empty hidden">No topics yet.</p>
+    <ul id="history-list" class="history-list"></ul>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <button id="sidebar-toggle-btn" class="btn btn-ghost sidebar-toggle" aria-label="Toggle history">&#9776;</button>
+      <p class="tagline">Research. Write. Verify.</p>
+    </header>
+
+    <main id="app" class="container">
+
+      <div id="health-banner" class="banner banner-error hidden"></div>
+
+      <!-- SCREEN: Setup -->
+      <section id="screen-setup" class="screen">
+        <h1>What should we look into?</h1>
+        <p class="subtitle">Pick a category, describe a topic, and TruthLens will research it, write it up, and let you refine it before publishing.</p>
+
+        <div id="category-cards" class="category-cards"></div>
+
+        <div class="field">
+          <label for="topic-input">Topic</label>
+          <input id="topic-input" type="text" placeholder="e.g. The impact of quantum computing on cybersecurity" autocomplete="off" />
+          <div id="example-chips" class="chips"></div>
+        </div>
+
+        <button id="start-btn" class="btn btn-primary" disabled>Start Research</button>
+      </section>
+
+      <!-- SCREEN: Progress -->
+      <section id="screen-progress" class="screen hidden">
+        <h1 id="progress-title">Working on it&hellip;</h1>
+        <p class="subtitle" id="progress-topic"></p>
+
+        <ol class="stepper">
+          <li id="step-researching" data-step="researching"><span class="dot"></span>Research</li>
+          <li id="step-writing" data-step="writing"><span class="dot"></span>Write</li>
+          <li id="step-editing" data-step="editing"><span class="dot"></span>Edit</li>
+          <li id="step-verifying" data-step="verifying"><span class="dot"></span>Verify</li>
+        </ol>
+
+        <pre id="stream-preview" class="stream-preview hidden"></pre>
+
+        <p class="hint">This runs a local model, so it can take a couple of minutes. Feel free to wait &mdash; no need to refresh.</p>
+
+        <div class="phase-animation">
+          <video id="phase-video" class="phase-video" autoplay muted loop playsinline disablepictureinpicture></video>
+        </div>
+
+        <div id="progress-error" class="progress-error hidden">
+          <p id="progress-error-message"></p>
+          <div class="feedback-actions">
+            <button id="retry-btn" class="btn btn-primary">Retry</button>
+            <button id="abandon-btn" class="btn btn-ghost">Start Over</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN: Review -->
+      <section id="screen-review" class="screen hidden">
+        <div class="review-header">
+          <h1 id="review-title"></h1>
+          <span class="badge" id="review-iteration"></span>
+        </div>
+
+        <article id="blog-content" class="blog-content"></article>
+
+        <details class="collapsible">
+          <summary>Research findings</summary>
+          <pre id="research-content" class="research-content"></pre>
+        </details>
+
+        <details class="collapsible">
+          <summary id="sources-summary">Sources</summary>
+          <ul id="sources-list" class="sources-list"></ul>
+        </details>
+
+        <details id="grounding-section" class="collapsible hidden">
+          <summary>Grounding check</summary>
+          <pre id="grounding-content" class="research-content"></pre>
+        </details>
+
+        <div class="feedback-panel">
+          <h2>What do you think?</h2>
+          <div class="feedback-actions">
+            <button id="approve-btn" class="btn btn-primary">Approve &amp; Finish</button>
+            <button id="reresearch-btn" class="btn btn-ghost">Re-research from scratch</button>
+          </div>
+          <div class="field">
+            <label for="feedback-input">Or describe changes you'd like</label>
+            <textarea id="feedback-input" rows="3" placeholder="e.g. make the intro punchier, or fix the grammar in paragraph 2"></textarea>
+          </div>
+          <button id="revise-btn" class="btn btn-secondary">Request Changes</button>
+          <p id="max-iterations-note" class="hint hidden">Maximum revisions reached &mdash; approve or start a new topic.</p>
+        </div>
+      </section>
+
+      <!-- SCREEN: Done -->
+      <section id="screen-done" class="screen hidden">
+        <h1>Ready to publish</h1>
+        <p class="subtitle">Your post is finalized.</p>
+        <div class="done-actions">
+          <a id="download-link" class="btn btn-primary" href="#">Download .md</a>
+          <button id="new-topic-btn" class="btn btn-ghost">Start a new topic</button>
+        </div>
+      </section>
+
+      <!-- SCREEN: History detail (read-only) -->
+      <section id="screen-history-detail" class="screen hidden">
+        <div class="review-header">
+          <h1 id="history-detail-title"></h1>
+          <span class="badge" id="history-detail-meta"></span>
+        </div>
+        <article id="history-detail-content" class="blog-content"></article>
+        <details class="collapsible">
+          <summary id="history-detail-sources-summary">Sources</summary>
+          <ul id="history-detail-sources" class="sources-list"></ul>
+        </details>
+        <details id="history-detail-grounding-section" class="collapsible hidden">
+          <summary>Grounding check</summary>
+          <pre id="history-detail-grounding" class="research-content"></pre>
+        </details>
+        <div class="done-actions">
+          <a id="history-detail-download" class="btn btn-primary" href="#">Download .md</a>
+        </div>
+      </section>
+
+      <div id="error-toast" class="toast hidden"></div>
+
+    </main>
+  </div>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
