@@ -16,6 +16,10 @@ from utils.logger import AgentLogger
 from utils.retry import with_retry, RetryConfig
 
 
+class IncompleteResponseError(RuntimeError):
+    """A hosted model's streamed reply ended without a finish_reason (cut off mid-reply)."""
+
+
 class BaseAgent(ABC):
     """
     Abstract base class for all TruthLens agents.
@@ -207,15 +211,30 @@ class BaseAgent(ABC):
         retry_config = RetryConfig(max_attempts=3, base_delay=1.0)
         last_exception: Optional[Exception] = None
 
+        # Hosted APIs mark a properly finished reply with a finish_reason on the
+        # last chunk. Some (seen with Gemini preview models under load) just
+        # end the stream mid-sentence instead - treat that as a failed attempt
+        # rather than silently passing half an article down the pipeline.
+        check_finish = self._settings.provider.is_hosted
+
         for attempt in range(1, retry_config.max_attempts + 1):
             try:
                 chunks: List[str] = []
+                finish_reason = None
                 for chunk in self._llm.stream(messages):
                     text = chunk.content
                     if text:
                         chunks.append(text)
                         if on_token:
                             on_token(text)
+                    finish_reason = (getattr(chunk, "response_metadata", None) or {}).get("finish_reason") or finish_reason
+                if check_finish and not finish_reason:
+                    raise IncompleteResponseError(
+                        f"the model's reply stopped after {sum(len(c) for c in chunks)} characters without finishing"
+                    )
+                if finish_reason == "length":
+                    # Hit max_tokens - retrying would stop at the same place.
+                    self._logger.warning("Reply reached the max_tokens limit and may be cut short")
                 return "".join(chunks)
             except Exception as e:
                 last_exception = e
@@ -228,6 +247,8 @@ class BaseAgent(ABC):
                         f"Stream attempt {attempt}/{retry_config.max_attempts} failed: {e}. "
                         f"Retrying in {delay:.1f}s..."
                     )
+                    if on_token and isinstance(e, IncompleteResponseError):
+                        on_token("\n\n── The reply was cut off, retrying ──\n\n")
                     time.sleep(delay)
 
         self._logger.error(f"All {retry_config.max_attempts} streaming attempts failed: {last_exception}")

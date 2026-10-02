@@ -25,3 +25,18 @@ def _no_real_network(monkeypatch):
         raise RuntimeError("network access is disabled in tests")
 
     monkeypatch.setattr(requests, "get", blocked)
+
+
+@pytest.fixture(autouse=True)
+def _default_settings(monkeypatch):
+    """
+    Tests must not depend on the developer's .env: reset the settings it can
+    change to defaults - local Ollama provider (so fake LLMs aren't treated as
+    a hosted API), no DATABASE_URL (so nothing ever writes to a real
+    Postgres), and sign-in off. Tests that need otherwise set it themselves.
+    """
+    from config import AuthConfig, ProviderConfig, settings
+
+    monkeypatch.setattr(settings, "provider", ProviderConfig())
+    monkeypatch.setattr(settings, "auth", AuthConfig())
+    monkeypatch.setattr(settings.storage, "database_url", "")

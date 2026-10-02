@@ -90,7 +90,9 @@ PROVIDER_PRESETS = {
     # free-tier prompts may be used by Google to improve its products.
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "model": "gemini-3.8-flash",
+        # The stable Flash model. The newest preview Flash models were cut off
+        # mid-reply and returned 503 "high demand" on the free tier in testing.
+        "model": "gemini-2.5-flash",
         "reasoning_effort": "low",
         "max_tokens": 4096,
     },

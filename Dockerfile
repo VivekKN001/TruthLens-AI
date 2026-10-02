@@ -1,6 +1,6 @@
 # TruthLens AI - container image for Hugging Face Spaces (or any Docker host).
 #
-# Configure with environment variables / Space secrets (see .env.example):
+# Configure with environment variables / Space secrets (see "Configuration" in README.md):
 #   LLM_PROVIDER + LLM_API_KEY   hosted model (no Ollama in the container)
 #   DATABASE_URL                 Postgres for history (the container disk is wiped on restart)
 #   GOOGLE_/GITHUB_CLIENT_ID/SECRET, SESSION_SECRET, PUBLIC_URL   sign-in

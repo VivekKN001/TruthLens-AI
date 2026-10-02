@@ -8,151 +8,229 @@ app_port: 7860
 pinned: false
 ---
 
-# TruthLens AI
+# 🔍 TruthLens AI
 
-A local, free, multi-agent pipeline that researches a topic, writes a blog post about it, fact-checks itself, and lets you refine the result through feedback — all running on your own machine with **zero API keys and zero cost**.
+**Research. Write. Verify.**
 
-Three agents built on [LangGraph](https://langchain-ai.github.io/langgraph/) hand off a topic between them:
+TruthLens is a multi-agent AI writer that researches any topic on the live web, writes a blog post with every fact cited, fact-checks its own claims and fixes what it got wrong, then refines the post with you until you approve it.
 
-**Researcher** → **Writer** → **Editor** → **Grounding Check** → **you**
+It's free to run: use a local [Ollama](https://ollama.com) model or a free hosted one (Google Gemini, Groq), with DuckDuckGo for search.
 
-and then loop on your feedback until you approve.
+![TruthLens home screen](docs/screenshots/hero.jpg)
 
-![Setup screen](docs/screenshots/setup.png)
+---
 
-![Progress screen with live phase animation](docs/screenshots/progress.png)
+## ✨ Highlights
 
-## Why it's different
+- **Reads the real web, not just search snippets.** Four searches per topic from different angles, deduplicated, and the full article text of the top pages is read and synthesized into a research brief.
+- **Cites its sources.** Specific facts carry `[1]`, `[2]`… markers that link to the exact page they came from. Citations to sources that don't exist are stripped automatically.
+- **Fact-checks and fixes itself.** A grounding check hunts for numbers, dates, names and quotes the research doesn't support. The editor corrects or removes them and the post is checked again. You see exactly what was auto-corrected and anything still flagged.
+- **You stay in charge.** Approve, re-research from scratch, or describe changes in plain words. Style requests go to the writer, polish requests to the editor.
+- **Your history is a conversation.** Every session is saved as a thread (topic, each draft, your feedback, the approval), with every earlier version still readable. With Google or GitHub sign-in, each person sees only their own history.
+- **Watch it think.** Each phase streams live, and a failed phase can be retried without starting over.
 
-- **Actually free, not "free tier."** The LLM is [Ollama](https://ollama.com) running locally (no API key, no rate limit, no bill) and web search is DuckDuckGo via `ddgs` (no API key, no quota).
-- **Fact-checks — and fixes — its own output.** After editing, a dedicated grounding-check pass flags specific claims — numbers, dates, quotes, names — that the research doesn't actually support. The editor then corrects just those claims and the post is checked again, and you're shown exactly what was auto-corrected and anything still flagged, so you're not just trusting the model.
-- **Two ways in.** A polished interactive CLI, and a browser UI with live token streaming, a themed loading animation per phase, run history, and one-click retry if a phase fails.
-- **Human-in-the-loop by design.** Approve, ask for a re-research from scratch, or give free-text feedback — it's automatically routed to whichever agent (writer or editor) is actually relevant.
+## 📸 A quick tour
 
-## Quick start
+| Live progress | Cited, fact-checked result |
+|:---:|:---:|
+| ![Progress screen with live output](docs/screenshots/progress.jpg) | ![Review screen with citations and fact-check summary](docs/screenshots/review.jpg) |
+| **Your sessions as conversations** | **Scroll-driven "How it works"** |
+| ![Conversation history](docs/screenshots/conversation.jpg) | ![How it works section](docs/screenshots/how-it-works.jpg) |
 
-**Prerequisites:** Python 3.10+, and [Ollama](https://ollama.com/download) installed.
+## 🧠 How it works
+
+```
+ Researcher ──► Writer ──► Editor ──► Fact-check ──► You
+                                        │    ▲         │
+                                        ▼    │         │ feedback
+                                       Auto-fix        ▼
+                                                 Writer or Editor
+```
+
+1. **Research.** Runs four DuckDuckGo searches, reads the full text of the top pages, and synthesizes a structured brief with numbered sources.
+2. **Write.** Turns the brief into a blog post in the voice of the category you picked (Science, Politics or Gaming), citing facts inline.
+3. **Edit.** Tightens structure, removes repetition, and checks the draft against the research.
+4. **Fact-check and fix.** Flags claims the research doesn't support, has the editor correct just those, and checks again. Anything still flagged is shown to you rather than silently published.
+5. **Your turn.** Approve it, ask for a fresh round of research, or describe what to change. Feedback is routed to the right agent automatically and the loop repeats (up to 3 revisions).
+
+Built with [LangGraph](https://langchain-ai.github.io/langgraph/) and FastAPI. The web UI is plain HTML/CSS/JS with no build step, and there's also an interactive terminal CLI.
+
+## 🚀 Run it on your computer
+
+**You need:** Python 3.10+ and **one** of these:
+- a free **Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey) (no download needed), or
+- [Ollama](https://ollama.com/download) installed (fully offline model, about 4.7 GB download).
+
+**1. Install**
 
 ```bash
-# 1. Set up a virtual environment
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+.venv\Scripts\activate            # Windows
+# source .venv/bin/activate       # macOS / Linux
+pip install -r requirements.txt
+```
 
-# 2. Install dependencies
-pip install -r requirements.txt   # includes pytest
+**2. Choose a model.** Create a file called `.env` in the project folder:
 
-# 3. Start Ollama and pull the model (one-time, ~4.7GB)
+```bash
+# Option A - Gemini (free hosted model)
+LLM_PROVIDER=gemini
+LLM_API_KEY=your-gemini-key
+```
+
+or, for Option B, leave `.env` empty and run Ollama:
+
+```bash
 ollama serve
 ollama pull llama3.1:8b
 ```
 
-Then run either interface:
+`.env` is listed in `.gitignore`, so your key never gets committed.
+
+**3. Start it**
 
 ```bash
-# Interactive terminal CLI
-python main.py
-
-# Browser UI at http://127.0.0.1:8000
-python server.py
+python server.py     # web app - open the address printed in the terminal
+python main.py       # or the interactive terminal version
 ```
 
-That's it — no `.env` file is required. Only add one if your Ollama isn't on the default `localhost:11434`, or you want to change the log level (see Configuration below).
+If the model isn't reachable or the key is wrong, both tell you exactly what to fix.
 
-If Ollama isn't running or the model isn't pulled, both entry points fail fast with the exact command you need to run.
+## ⚙️ Configuration
 
-## How it works
+Everything is optional. With nothing set, TruthLens uses local Ollama, saves history to a local SQLite file, and needs no sign-in. Put settings in `.env` when running locally, or in your host's secrets when deployed.
 
-1. **Research** — runs four DuckDuckGo queries per topic, deduplicates results, reads the actual article text of the top pages (not just search snippets), and has the LLM synthesize them into a structured summary with numbered sources.
-2. **Write** — turns the research into a category-specific blog draft (Science / Politics / Gaming, each with its own tone and audience), citing specific facts inline as `[1]`, `[2]`… against the real source list. Citations to sources that don't exist are stripped automatically.
-3. **Edit** — fact-checks the draft against the research, tightens structure, removes repetition, and polishes tone.
-4. **Grounding check** — a second pass that specifically hunts for claims the research doesn't back up. Anything it flags is corrected (or removed) by the editor and re-checked before the post reaches you; whatever is still flagged after that is shown to you rather than silently published.
-5. **Your turn** — approve it, ask for full re-research, or describe what to change. Feedback is routed to the writer or editor automatically based on what you're asking for, then it loops back to step 4.
+### Model
 
-Every run — the research, both drafts, the grounding notes, sources, and how many revisions it took — is saved to a local SQLite history, browsable from the sidebar in the web UI or via `GET /api/history`.
+| Variable | Default | What it does |
+|---|---|---|
+| `LLM_PROVIDER` | `ollama` | `ollama` (local), `gemini`, `groq`, or `openai_compatible` (any other OpenAI-style API) |
+| `LLM_API_KEY` | — | API key for a hosted provider |
+| `LLM_MODEL` | provider preset | Override the model, e.g. `gemini-2.5-flash` |
+| `LLM_BASE_URL` | provider preset | API address (required for `openai_compatible`) |
+| `LLM_MAX_TOKENS` | provider preset | Maximum length of each reply |
+| `LLM_REASONING_EFFORT` | `low` for presets | How much the model "thinks" before answering |
+| `OLLAMA_BASE_URL` | Ollama's standard local port (11434) | Where Ollama runs, if not the default |
 
-## Project layout
+**Which model?**
 
-```
-main.py              interactive CLI entry point
-server.py            FastAPI web UI (streaming, retry, history)
-config.py            all tunable settings (model, context window, search, etc.)
-state.py             the shared state object every agent reads/writes
-agents/               ResearcherAgent, WriterAgent, EditorAgent
-graph/workflow.py     the two LangGraph pipelines (initial run + revisions)
-prompts/              category-specific system prompts per agent
-utils/                retry/backoff, response parsing, feedback routing, SQLite storage
-static/               the web UI (HTML/CSS/JS, no framework, no build step)
-tests/                pytest suite - fully mocked, no Ollama/network needed
-```
+| Provider | Model | Free allowance | Notes |
+|---|---|---|---|
+| **Gemini** ⭐ | `gemini-2.5-flash` (default) | Free tier; your limits are shown in AI Studio | Best free option. Free-tier prompts may be used by Google to improve its products. The newest preview Flash models cut replies short and were often overloaded on the free tier in testing, so the stable model is the default. |
+| **Groq** | `openai/gpt-oss-120b` (default) | 8K tokens/min, 200K tokens/day | Very fast, but only a handful of articles a day |
+| **Hugging Face** | any chat model, e.g. `openai/gpt-oss-120b` | Small monthly credit ($0.10 on free accounts) | `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL=https://router.huggingface.co/v1`, and an HF token with "Inference Providers" permission |
+| **Ollama** | `llama3.1:8b` (set in `config.py`) | Unlimited, runs offline | Slower on CPU; needs disk space for the model |
 
-For the full technical breakdown (why things are structured this way, what's load-bearing, what to touch when adding a category), see [CLAUDE.md](CLAUDE.md).
+Pick a model of roughly 20B parameters or larger. TruthLens sends long research, expects long articles back, and relies on the model following exact formats for citations and fact-checks.
 
-## Testing
+### History storage
 
-```bash
-pytest                              # full suite, mocked, runs in well under a second
-pytest tests/test_agents.py -v      # one file
-pytest -k determine_revision_target # one test
-```
+| Variable | Default | What it does |
+|---|---|---|
+| `DATABASE_URL` | — (uses `data/truthlens.db`) | A Postgres connection string, e.g. a free [Neon](https://neon.tech) database. Needed when deployed, because free hosts wipe their disk on every restart. |
 
-No test depends on Ollama or a network connection.
+### Sign-in (web app)
 
-## Deploy for free (Hugging Face Spaces)
+Set at least one provider to turn sign-in on. Each user then sees only their own history.
 
-No Ollama needed: the deployed app uses a hosted model's free tier, a free Postgres database for history, and Google/GitHub sign-in so each person gets their own history.
+| Variable | What it does |
+|---|---|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Enables "Continue with Google" |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Enables "Continue with GitHub" |
+| `SESSION_SECRET` | Signs the login cookie. Use a long random value (`python -c "import secrets; print(secrets.token_urlsafe(48))"`), otherwise everyone is signed out whenever the server restarts. |
+| `PUBLIC_URL` | The app's public address, e.g. `https://your-name-truthlens.hf.space` (no trailing slash). Used to build sign-in callback addresses. |
+
+The callback addresses to register with Google/GitHub are `PUBLIC_URL/auth/callback/google` and `PUBLIC_URL/auth/callback/github`.
+
+### Other
+
+| Variable | Default | What it does |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Logging detail |
+
+Fine-grained settings (temperature per agent, search depth, number of sources, fact-check fix rounds, maximum revisions) live in [`config.py`](config.py).
+
+## ☁️ Deploy for free on Hugging Face Spaces
+
+<p align="center"><img src="docs/screenshots/sign-in.jpg" alt="Sign-in screen" width="720"></p>
 
 **1. Get the free pieces**
 
-| What | Where | You'll copy |
+| What | Where | Gives you |
 |---|---|---|
-| Model API key | Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (or Groq: [console.groq.com/keys](https://console.groq.com/keys)) | `LLM_API_KEY` |
-| Postgres database | [neon.tech](https://neon.tech) → new project → *Connection string* | `DATABASE_URL` |
+| Model API key | [Google AI Studio](https://aistudio.google.com/apikey) (or [Groq](https://console.groq.com/keys)) | `LLM_API_KEY` |
+| Postgres database | [Neon](https://neon.tech): new project, then copy the connection string | `DATABASE_URL` |
 | Hugging Face account | [huggingface.co/join](https://huggingface.co/join) | — |
 
-**2. Create the Space:** New Space → SDK **Docker** → *Blank* → choose Public or Private. Your app's address will be `https://<username>-<space-name>.hf.space` — that's your `PUBLIC_URL`.
+**2. Create the Space.** New Space, SDK **Docker**, template *Blank*, public or private. Its address will be `https://<username>-<space-name>.hf.space`. That's your `PUBLIC_URL`.
 
-**3. Register sign-in apps** (one or both), using the `PUBLIC_URL` from step 2:
-- **GitHub:** Settings → Developer settings → OAuth Apps → New. Homepage URL = `PUBLIC_URL`, callback URL = `PUBLIC_URL/auth/callback/github`.
-- **Google:** [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → Create OAuth client ID (*Web application*). Authorized redirect URI = `PUBLIC_URL/auth/callback/google`. (Configure the consent screen first if asked; add yourself as a test user while it's in testing.)
+**3. Register sign-in apps** (one or both):
+- **GitHub:** Settings → Developer settings → OAuth Apps → New OAuth App. Homepage URL is your `PUBLIC_URL`; callback URL is `PUBLIC_URL/auth/callback/github`.
+- **Google:** [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials → Create OAuth client ID (*Web application*). Authorized redirect URI is `PUBLIC_URL/auth/callback/google`. Set up the consent screen first if asked, and add yourself as a test user while it's in testing mode.
 
-**4. Add Space secrets** (Space → Settings → *Variables and secrets*), see [.env.example](.env.example):
+**4. Add the Space secrets** (Space → Settings → *Variables and secrets*):
 
 ```
-LLM_PROVIDER=gemini            # or groq
+LLM_PROVIDER=gemini
 LLM_API_KEY=...
-DATABASE_URL=postgresql://...  # from Neon
-GITHUB_CLIENT_ID=...           # and/or GOOGLE_CLIENT_ID
-GITHUB_CLIENT_SECRET=...       # and/or GOOGLE_CLIENT_SECRET
-SESSION_SECRET=...             # python -c "import secrets; print(secrets.token_urlsafe(48))"
+DATABASE_URL=postgresql://...
+GITHUB_CLIENT_ID=...          # and/or GOOGLE_CLIENT_ID
+GITHUB_CLIENT_SECRET=...      # and/or GOOGLE_CLIENT_SECRET
+SESSION_SECRET=...
 PUBLIC_URL=https://<username>-<space-name>.hf.space
 ```
 
-**5. Push the code** to the Space's git repo (`git remote add space https://huggingface.co/spaces/<username>/<space-name>` then `git push space main`). It builds from the [Dockerfile](Dockerfile) and starts automatically. Hugging Face stores binary files (the phase videos and screenshots) through Git LFS, so if the push is rejected for binary files, convert them first: `git lfs install` then `git lfs migrate import --include="*.mp4,*.png" --everything`, and push again. That rewrites history, so do it on a copy or branch you're happy to force-push.
+**5. Push the code** to the Space:
 
-Open the app at its **own address** (`PUBLIC_URL`), not the huggingface.co Space page: that page shows the app inside a frame, where Google/GitHub sign-in can't work (the app offers to open itself in a new tab if you land there).
+```bash
+git remote add space https://huggingface.co/spaces/<username>/<space-name>
+git push space main
+```
 
-**Free-tier limits to know about:** Groq's free tier is 8K tokens/minute and 200K tokens/day on `gpt-oss`, so expect only a handful of articles a day; Gemini's free limits are shown in your AI Studio dashboard, and free-tier prompts may be used by Google to improve its products. A free Space sleeps after ~48 hours without visitors and wakes on the next visit. DuckDuckGo throttles cloud servers more than home connections, so research may occasionally be thinner when deployed.
+It builds from the [Dockerfile](Dockerfile) and starts automatically. Hugging Face requires binary files (the videos and screenshots) to go through Git LFS. If the push is rejected for that reason, convert them and push again:
 
-## Configuration
+```bash
+git lfs install
+git lfs migrate import --include="*.mp4,*.png,*.jpg" --everything
+```
 
-Everything tunable lives in `config.py` — model name, temperature per agent, context window, search retry/backoff behavior, max revision iterations, and the SQLite history path. Environment variables (set them in a `.env` file):
+This rewrites git history, so do it on a copy or a branch you're happy to force-push.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `LLM_PROVIDER` | `ollama` | `ollama` (local), `gemini`, `groq`, or `openai_compatible` |
-| `LLM_API_KEY` | — | API key for a hosted provider |
-| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_MAX_TOKENS` / `LLM_REASONING_EFFORT` | provider preset | Override the hosted preset (required for `openai_compatible`) |
-| `DATABASE_URL` | — | Postgres URL for history (e.g. Neon); without it history is the local SQLite file |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Where Ollama is running |
-| `LOG_LEVEL` | `INFO` | Logging verbosity |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Enable "Continue with Google" in the web UI |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | — | Enable "Continue with GitHub" in the web UI |
-| `SESSION_SECRET` | random per start | Signs the login cookie — set a long random value when sign-in is enabled, or everyone is logged out on restart |
-| `PUBLIC_URL` | — | The app's public address (e.g. `https://you-truthlens.hf.space`), used for OAuth callback URLs when deployed |
+**Open the app at its own address** (`PUBLIC_URL`), not the huggingface.co Space page. That page shows the app inside a frame, where Google/GitHub sign-in can't work; if you land there, the app offers to open itself in a new tab.
 
-### Sign-in and personal history
+## 🗂️ Project layout
 
-With no OAuth provider configured (the default, e.g. on your own PC) the web UI needs no login and all history is yours. Configure Google and/or GitHub and visitors sign in; each person then sees only their own sessions, and opening one shows the whole conversation — the topic, every draft, your feedback and where it was routed, and the approval — with every earlier draft still readable. OAuth callback URLs to register with the provider: `<PUBLIC_URL>/auth/callback/google` and `<PUBLIC_URL>/auth/callback/github` (for local testing, `http://127.0.0.1:8000/auth/callback/...`).
+```
+server.py              web app (FastAPI): live streaming, retry, history, sign-in
+main.py                interactive terminal version
+auth.py                Google / GitHub sign-in and per-user access
+config.py              all settings (model provider, search, storage, sign-in)
+state.py               the shared state every agent reads and writes
+agents/                Researcher, Writer and Editor agents
+graph/workflow.py      the LangGraph pipelines (first run + revisions)
+prompts/               category-specific prompts and citation rules
+utils/                 page fetching, citations, parsing, storage (SQLite / Postgres)
+static/                the web UI (HTML/CSS/JS, no framework, no build step)
+tests/                 pytest suite - fully mocked, no model or network needed
+Dockerfile             container for Hugging Face Spaces
+```
 
-Science, Politics, and Gaming are the three built-in categories. Adding a new one means touching the `Category` enum in `config.py`, the three `prompts/*.py` files, `WriterAgent.AUDIENCES`, and `main.py`'s example topics — see CLAUDE.md for details.
+For the technical deep dive (design decisions, what's load-bearing, how to add a category), see [CLAUDE.md](CLAUDE.md).
+
+## 🧪 Testing
+
+```bash
+pytest                          # full suite: offline and fast
+pytest tests/test_server.py -v  # one file
+pytest -k citations             # tests matching a name
+```
+
+No test needs a model, an API key or a network connection, and tests ignore your `.env`. To also test against a real Postgres database, set `TEST_DATABASE_URL` to its connection string.
+
+## 📝 Good to know
+
+- **The fact-check is a strong safety net, not a guarantee.** It's the model checking its own work against the research, so always read the flagged claims before publishing.
+- **Free tiers have limits.** Each article takes about six model calls. TruthLens waits and retries automatically when a provider asks it to slow down, and a phase that still fails can be retried with one click.
+- **DuckDuckGo is stricter with cloud servers** than home connections, so research can occasionally be thinner when deployed.
+- **A free Space sleeps** after about 48 hours without visitors and wakes on the next visit. Finished sessions are kept in the database; a run that was in progress during a restart is lost.
+- **Adding a category** (beyond Science, Politics and Gaming) means updating `config.py`, the prompt files, the writer's audience list and the example topics. See [CLAUDE.md](CLAUDE.md).

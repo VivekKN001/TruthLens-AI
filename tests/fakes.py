@@ -2,8 +2,9 @@
 
 
 class FakeChunk:
-    def __init__(self, content):
+    def __init__(self, content, response_metadata=None):
         self.content = content
+        self.response_metadata = response_metadata or {}
 
 
 class FakeMessage:

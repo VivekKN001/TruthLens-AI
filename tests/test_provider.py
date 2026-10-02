@@ -27,11 +27,11 @@ def test_gemini_preset_builds_openai_compatible_client():
 
     llm = writer._llm
     assert isinstance(llm, ChatOpenAI)
-    assert llm.model_name == "gemini-3.8-flash"
+    assert llm.model_name == "gemini-2.5-flash"
     assert "generativelanguage.googleapis.com" in str(llm.openai_api_base)
     assert llm.temperature == 0.7
     assert llm.reasoning_effort == "low"
-    assert s.model_label == "gemini-3.8-flash"
+    assert s.model_label == "gemini-2.5-flash"
 
 
 def test_env_style_overrides_beat_preset():
@@ -97,3 +97,57 @@ def test_validate_hosted_treats_gemini_400_as_rejected_key(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
     ok, errors = _settings(provider="gemini", api_key="bad").validate_llm()
     assert not ok and "rejected" in errors[0]
+
+
+# ---------- Cut-off streams from hosted models ----------
+
+class _StreamLLM:
+    """Yields scripted streams: each is a list of (text, finish_reason) pairs."""
+
+    def __init__(self, streams):
+        self.streams = list(streams)
+        self.calls = 0
+
+    def stream(self, messages):
+        from tests.fakes import FakeChunk
+
+        stream = self.streams[min(self.calls, len(self.streams) - 1)]
+        self.calls += 1
+        for text, finish in stream:
+            yield FakeChunk(text, {"finish_reason": finish} if finish else {})
+
+
+def test_hosted_stream_cut_off_is_retried():
+    llm = _StreamLLM([[("Half an art", None)], [("Full ", None), ("article.", "stop")]])
+    writer = WriterAgent(llm=llm, llm_config=LLMConfig(model="x"), app_settings=_settings(provider="gemini", api_key="k"))
+    tokens = []
+
+    out = writer._invoke_llm_stream("prompt", on_token=tokens.append)
+
+    assert out == "Full article."
+    assert llm.calls == 2
+    assert any("cut off" in t for t in tokens)
+
+
+def test_hosted_stream_that_never_finishes_falls_back():
+    llm = _StreamLLM([[("Half", None)]])
+    writer = WriterAgent(llm=llm, llm_config=LLMConfig(model="x"), app_settings=_settings(provider="gemini", api_key="k"))
+
+    assert writer._invoke_llm_stream_safe("prompt", fallback="FALLBACK") == "FALLBACK"
+    assert llm.calls == 3
+
+
+def test_ollama_streams_are_not_finish_checked():
+    llm = _StreamLLM([[("Local ", None), ("reply", None)]])
+    writer = WriterAgent(llm=llm, llm_config=LLMConfig(model="x"), app_settings=Settings())
+
+    assert writer._invoke_llm_stream("prompt") == "Local reply"
+    assert llm.calls == 1
+
+
+def test_max_tokens_finish_is_accepted_not_retried():
+    llm = _StreamLLM([[("Long reply", "length")]])
+    writer = WriterAgent(llm=llm, llm_config=LLMConfig(model="x"), app_settings=_settings(provider="gemini", api_key="k"))
+
+    assert writer._invoke_llm_stream("prompt") == "Long reply"
+    assert llm.calls == 1
