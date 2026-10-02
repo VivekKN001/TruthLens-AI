@@ -42,7 +42,7 @@ Three things switch on environment variables (all in `config.py`, documented in 
 - **Storage** — `utils/storage.py` routes to SQLite (`settings.storage.db_path`) or Postgres via pg8000 when `DATABASE_URL` is set; an explicit `db_path` argument always means SQLite (tests). All SQL uses `:named` params, which both drivers accept — keep it that way. The Postgres backend holds one connection behind a lock and reconnects once on failure (Neon suspends idle DBs). `tests/test_storage_postgres.py` covers it with a fake pg8000 connection, plus a real round-trip when `TEST_DATABASE_URL` is set.
 - **Sign-in** — see Web UI below.
 
-The [Dockerfile](Dockerfile) targets Hugging Face Spaces (uid 1000, port 7860, the `README.md` front matter sets `sdk: docker`). It must run **one** uvicorn worker: in-progress runs live in the process's `RUNS` dict. `server.py` reads `HOST`/`PORT` when run directly.
+The [Dockerfile](Dockerfile) is deployed on Render's free plan (Docker runtime, built from the GitHub repo; Render injects `PORT`). It must run **one** uvicorn worker: in-progress runs live in the process's `RUNS` dict. `server.py` reads `HOST`/`PORT` when run directly. `PUBLIC_URL` must match the exact Render address (Render may append a suffix like `-ae6g` to the service name) or the OAuth callback goes to the wrong host. Hugging Face Spaces was tried first but now requires a paid plan for new Docker Spaces; `static/app.js:IS_FRAMED` (open-in-new-tab sign-in when embedded in an iframe) stems from that and is harmless elsewhere.
 
 ## Architecture
 

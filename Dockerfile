@@ -1,4 +1,4 @@
-# TruthLens AI - container image for Hugging Face Spaces (or any Docker host).
+# TruthLens AI - container image for Render (or any Docker host).
 #
 # Configure with environment variables / Space secrets (see "Configuration" in README.md):
 #   LLM_PROVIDER + LLM_API_KEY   hosted model (no Ollama in the container)
@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Hugging Face Spaces runs containers as uid 1000.
+# Run as an unprivileged user.
 RUN useradd --create-home --uid 1000 user
 WORKDIR /app
 
@@ -21,9 +21,10 @@ RUN pip install -r requirements.txt
 COPY --chown=user . .
 USER user
 
+# Hosts like Render set PORT themselves; 8000 is the fallback.
 ENV HOST=0.0.0.0 \
-    PORT=7860
-EXPOSE 7860
+    PORT=8000
+EXPOSE 8000
 
 # One worker only: in-progress runs live in the server process's memory.
 # --proxy-headers lets the app see the public https URL behind the host's proxy.

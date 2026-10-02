@@ -1,13 +1,3 @@
----
-title: TruthLens AI
-emoji: 🔍
-colorFrom: green
-colorTo: yellow
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # 🔍 TruthLens AI
 
 **Research. Write. Verify.**
@@ -138,7 +128,7 @@ Set at least one provider to turn sign-in on. Each user then sees only their own
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Enables "Continue with Google" |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Enables "Continue with GitHub" |
 | `SESSION_SECRET` | Signs the login cookie. Use a long random value (`python -c "import secrets; print(secrets.token_urlsafe(48))"`), otherwise everyone is signed out whenever the server restarts. |
-| `PUBLIC_URL` | The app's public address, e.g. `https://your-name-truthlens.hf.space` (no trailing slash). Used to build sign-in callback addresses. |
+| `PUBLIC_URL` | The app's public address, e.g. `https://truthlens-ai-xxxx.onrender.com` (no trailing slash). Used to build sign-in callback addresses. |
 
 The callback addresses to register with Google/GitHub are `PUBLIC_URL/auth/callback/google` and `PUBLIC_URL/auth/callback/github`.
 
@@ -150,53 +140,47 @@ The callback addresses to register with Google/GitHub are `PUBLIC_URL/auth/callb
 
 Fine-grained settings (temperature per agent, search depth, number of sources, fact-check fix rounds, maximum revisions) live in [`config.py`](config.py).
 
-## ☁️ Deploy for free on Hugging Face Spaces
+## ☁️ Deploy for free on Render
+
+**Live demo:** [truthlens-ai-ae6g.onrender.com](https://truthlens-ai-ae6g.onrender.com)
 
 <p align="center"><img src="docs/screenshots/sign-in.jpg" alt="Sign-in screen" width="720"></p>
+
+[Render](https://render.com)'s free plan runs TruthLens from its [Dockerfile](Dockerfile), straight from this GitHub repo. It sleeps after 15 minutes without visitors and takes about a minute to wake on the next visit. Its disk is wiped on every restart, which is why history goes in a Neon database.
 
 **1. Get the free pieces**
 
 | What | Where | Gives you |
 |---|---|---|
 | Model API key | [Google AI Studio](https://aistudio.google.com/apikey) (or [Groq](https://console.groq.com/keys)) | `LLM_API_KEY` |
-| Postgres database | [Neon](https://neon.tech): new project, then copy the connection string | `DATABASE_URL` |
-| Hugging Face account | [huggingface.co/join](https://huggingface.co/join) | — |
+| Postgres database | [Neon](https://neon.tech): open your project, click **Connect**, choose the **`neondb_owner`** role, turn connection pooling off, and copy the connection string | `DATABASE_URL` |
+| Render account | [render.com](https://render.com) ("Sign up with GitHub" is easiest) | — |
 
-**2. Create the Space.** New Space, SDK **Docker**, template *Blank*, public or private. Its address will be `https://<username>-<space-name>.hf.space`. That's your `PUBLIC_URL`.
+Use the `neondb_owner` role: Neon also lists restricted roles (such as `authenticator`) that aren't allowed to create the app's tables.
 
-**3. Register sign-in apps** (one or both):
+**2. Create the web service.** In Render: **New → Web Service**, then pick this repo and branch. Set **Language** to **Docker** (the start command comes from the Dockerfile, so leave any command fields empty) and **Instance type** to **Free**. After it's created, your address appears at the top of the service page, e.g. `https://truthlens-ai-xxxx.onrender.com`. That's your `PUBLIC_URL`. Render may add a suffix to the name, so copy the exact address.
+
+**3. Register sign-in apps** (one or both), using that exact address:
 - **GitHub:** Settings → Developer settings → OAuth Apps → New OAuth App. Homepage URL is your `PUBLIC_URL`; callback URL is `PUBLIC_URL/auth/callback/github`.
 - **Google:** [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials → Create OAuth client ID (*Web application*). Authorized redirect URI is `PUBLIC_URL/auth/callback/google`. Set up the consent screen first if asked, and add yourself as a test user while it's in testing mode.
 
-**4. Add the Space secrets** (Space → Settings → *Variables and secrets*):
+**4. Add the environment variables** (service page → **Environment**):
 
 ```
 LLM_PROVIDER=gemini
 LLM_API_KEY=...
-DATABASE_URL=postgresql://...
+DATABASE_URL=postgresql://neondb_owner:...
 GITHUB_CLIENT_ID=...          # and/or GOOGLE_CLIENT_ID
 GITHUB_CLIENT_SECRET=...      # and/or GOOGLE_CLIENT_SECRET
 SESSION_SECRET=...
-PUBLIC_URL=https://<username>-<space-name>.hf.space
+PUBLIC_URL=https://truthlens-ai-xxxx.onrender.com
 ```
 
-**5. Push the code** to the Space:
+Saving redeploys the service. Every later push to the branch redeploys it too.
 
-```bash
-git remote add space https://huggingface.co/spaces/<username>/<space-name>
-git push space main
-```
+**5. Check it.** Open your address: the model badge in the top-right should show your model, and **Sign in** should take you to GitHub and back. If sign-in returns you to the wrong site, `PUBLIC_URL` or the callback URL doesn't match your exact Render address.
 
-It builds from the [Dockerfile](Dockerfile) and starts automatically. Hugging Face requires binary files (the videos and screenshots) to go through Git LFS. If the push is rejected for that reason, convert them and push again:
-
-```bash
-git lfs install
-git lfs migrate import --include="*.mp4,*.png,*.jpg" --everything
-```
-
-This rewrites git history, so do it on a copy or a branch you're happy to force-push.
-
-**Open the app at its own address** (`PUBLIC_URL`), not the huggingface.co Space page. That page shows the app inside a frame, where Google/GitHub sign-in can't work; if you land there, the app offers to open itself in a new tab.
+**Other hosts:** the same Docker image runs anywhere that runs containers and keeps one server process (the app holds in-progress runs in memory). Hugging Face Spaces now requires a paid plan for new Docker Spaces.
 
 ## 🗂️ Project layout
 
@@ -212,7 +196,7 @@ prompts/               category-specific prompts and citation rules
 utils/                 page fetching, citations, parsing, storage (SQLite / Postgres)
 static/                the web UI (HTML/CSS/JS, no framework, no build step)
 tests/                 pytest suite - fully mocked, no model or network needed
-Dockerfile             container for Hugging Face Spaces
+Dockerfile             container image (used by Render)
 ```
 
 For the technical deep dive (design decisions, what's load-bearing, how to add a category), see [CLAUDE.md](CLAUDE.md).
@@ -232,5 +216,5 @@ No test needs a model, an API key or a network connection, and tests ignore your
 - **The fact-check is a strong safety net, not a guarantee.** It's the model checking its own work against the research, so always read the flagged claims before publishing.
 - **Free tiers have limits.** Each article takes about six model calls. TruthLens waits and retries automatically when a provider asks it to slow down, and a phase that still fails can be retried with one click.
 - **DuckDuckGo is stricter with cloud servers** than home connections, so research can occasionally be thinner when deployed.
-- **A free Space sleeps** after about 48 hours without visitors and wakes on the next visit. Finished sessions are kept in the database; a run that was in progress during a restart is lost.
+- **The free Render service sleeps** after 15 minutes without visitors and takes about a minute to wake. Finished sessions are kept in the database; a run that was in progress during a restart is lost.
 - **Adding a category** (beyond Science, Politics and Gaming) means updating `config.py`, the prompt files, the writer's audience list and the example topics. See [CLAUDE.md](CLAUDE.md).
