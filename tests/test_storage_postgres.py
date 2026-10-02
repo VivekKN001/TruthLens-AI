@@ -108,15 +108,23 @@ def test_real_postgres_round_trip(monkeypatch):
     monkeypatch.setattr(settings.storage, "database_url", os.environ["TEST_DATABASE_URL"])
     monkeypatch.setattr(storage, "_postgres", None)
     run_id = f"test-{uuid.uuid4().hex[:8]}"
+    user_id = f"pytest:{uuid.uuid4().hex[:8]}"
 
-    storage.save_run(run_id, _state(), "awaiting_feedback", user_id="pytest")
-    storage.save_run(run_id, _state(), "done", user_id="someone-else")
-    storage.add_event(run_id, "user", "topic", {"topic": "Fusion"})
-    storage.upsert_user("pytest", "github", "Py Test")
-    storage.upsert_user("pytest", "github", "Py Test 2")
+    try:
+        storage.save_run(run_id, _state(), "awaiting_feedback", user_id=user_id)
+        storage.save_run(run_id, _state(), "done", user_id="someone-else")
+        storage.add_event(run_id, "user", "topic", {"topic": "Fusion"})
+        storage.upsert_user(user_id, "github", "Py Test")
+        storage.upsert_user(user_id, "github", "Py Test 2")
 
-    record = storage.get_run(run_id)
-    assert record["status"] == "done" and record["user_id"] == "pytest"
-    assert run_id in [r["id"] for r in storage.list_runs(user_id="pytest")]
-    assert storage.get_events(run_id)[0]["data"] == {"topic": "Fusion"}
-    assert storage.get_user("pytest")["name"] == "Py Test 2"
+        record = storage.get_run(run_id)
+        assert record["status"] == "done" and record["user_id"] == user_id
+        assert run_id in [r["id"] for r in storage.list_runs(user_id=user_id)]
+        assert storage.get_events(run_id)[0]["data"] == {"topic": "Fusion"}
+        assert storage.get_user(user_id)["name"] == "Py Test 2"
+    finally:
+        # This may be the database the deployed app uses - leave nothing behind.
+        db = storage._db()
+        db.query("DELETE FROM run_events WHERE run_id = :id", {"id": run_id})
+        db.query("DELETE FROM runs WHERE id = :id", {"id": run_id})
+        db.query("DELETE FROM users WHERE id = :id", {"id": user_id})
