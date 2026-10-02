@@ -4,7 +4,7 @@
 
 TruthLens is a multi-agent AI writer that researches any topic on the live web, writes a blog post with every fact cited, fact-checks its own claims and fixes what it got wrong, then refines the post with you until you approve it.
 
-It's free to run: use a local [Ollama](https://ollama.com) model or a free hosted one (Google Gemini, Groq), with DuckDuckGo for search.
+It's free to run: it uses Google Gemini's free tier by default (or Groq, or a fully local [Ollama](https://ollama.com) model), with DuckDuckGo for search.
 
 ![TruthLens home screen](docs/screenshots/hero.jpg)
 
@@ -47,9 +47,7 @@ Built with [LangGraph](https://langchain-ai.github.io/langgraph/) and FastAPI. T
 
 ## 🚀 Run it on your computer
 
-**You need:** Python 3.10+ and **one** of these:
-- a free **Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey) (no download needed), or
-- [Ollama](https://ollama.com/download) installed (fully offline model, about 4.7 GB download).
+**You need:** Python 3.10+ and a free **Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey). No model download is needed. (Prefer fully offline? See the Ollama option below.)
 
 **1. Install**
 
@@ -60,22 +58,20 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-**2. Choose a model.** Create a file called `.env` in the project folder:
+**2. Add your key.** Create a file called `.env` in the project folder:
 
 ```bash
-# Option A - Gemini (free hosted model)
-LLM_PROVIDER=gemini
 LLM_API_KEY=your-gemini-key
 ```
 
-or, for Option B, leave `.env` empty and run Ollama:
+Gemini is the default, so that's all you need. `.env` is listed in `.gitignore`, so your key never gets committed.
+
+*Offline alternative:* install [Ollama](https://ollama.com/download) (about a 4.7 GB model download), put `LLM_PROVIDER=ollama` in `.env` instead, and run:
 
 ```bash
 ollama serve
 ollama pull llama3.1:8b
 ```
-
-`.env` is listed in `.gitignore`, so your key never gets committed.
 
 **3. Start it**
 
@@ -88,19 +84,19 @@ If the model isn't reachable or the key is wrong, both tell you exactly what to 
 
 ## ⚙️ Configuration
 
-Everything is optional. With nothing set, TruthLens uses local Ollama, saves history to a local SQLite file, and needs no sign-in. Put settings in `.env` when running locally, or in your host's secrets when deployed.
+The only required setting is `LLM_API_KEY`. With nothing else set, TruthLens uses Gemini (`gemini-2.5-flash`), saves history to a local SQLite file, and needs no sign-in. Put settings in `.env` when running locally, or in your host's environment settings when deployed.
 
 ### Model
 
 | Variable | Default | What it does |
 |---|---|---|
-| `LLM_PROVIDER` | `ollama` | `ollama` (local), `gemini`, `groq`, or `openai_compatible` (any other OpenAI-style API) |
-| `LLM_API_KEY` | — | API key for a hosted provider |
+| `LLM_PROVIDER` | `gemini` | `gemini`, `groq`, `openai_compatible` (any other OpenAI-style API), or `ollama` (local) |
+| `LLM_API_KEY` | — | **Required** (except with `ollama`). Your Gemini key, or the key for the provider you chose |
 | `LLM_MODEL` | provider preset | Override the model, e.g. `gemini-2.5-flash` |
 | `LLM_BASE_URL` | provider preset | API address (required for `openai_compatible`) |
 | `LLM_MAX_TOKENS` | provider preset | Maximum length of each reply |
 | `LLM_REASONING_EFFORT` | `low` for presets | How much the model "thinks" before answering |
-| `OLLAMA_BASE_URL` | Ollama's standard local port (11434) | Where Ollama runs, if not the default |
+| `OLLAMA_BASE_URL` | Ollama's standard local port (11434) | Only with `ollama`: where Ollama runs, if not the default |
 
 **Which model?**
 
@@ -109,7 +105,7 @@ Everything is optional. With nothing set, TruthLens uses local Ollama, saves his
 | **Gemini** ⭐ | `gemini-2.5-flash` (default) | Free tier; your limits are shown in AI Studio | Best free option. Free-tier prompts may be used by Google to improve its products. The newest preview Flash models cut replies short and were often overloaded on the free tier in testing, so the stable model is the default. |
 | **Groq** | `openai/gpt-oss-120b` (default) | 8K tokens/min, 200K tokens/day | Very fast, but only a handful of articles a day |
 | **Hugging Face** | any chat model, e.g. `openai/gpt-oss-120b` | Small monthly credit ($0.10 on free accounts) | `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL=https://router.huggingface.co/v1`, and an HF token with "Inference Providers" permission |
-| **Ollama** | `llama3.1:8b` (set in `config.py`) | Unlimited, runs offline | Slower on CPU; needs disk space for the model |
+| **Ollama** | `llama3.1:8b` (set in `config.py`) | Unlimited, runs offline | Set `LLM_PROVIDER=ollama`. Slower on CPU; needs disk space for the model |
 
 Pick a model of roughly 20B parameters or larger. TruthLens sends long research, expects long articles back, and relies on the model following exact formats for citations and fact-checks.
 
@@ -167,7 +163,6 @@ Use the `neondb_owner` role: Neon also lists restricted roles (such as `authenti
 **4. Add the environment variables** (service page → **Environment**):
 
 ```
-LLM_PROVIDER=gemini
 LLM_API_KEY=...
 DATABASE_URL=postgresql://neondb_owner:...
 GITHUB_CLIENT_ID=...          # and/or GOOGLE_CLIENT_ID

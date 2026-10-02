@@ -1,7 +1,7 @@
 """The self-fixing grounding check: parsing its output, and the check -> fix -> re-check loop."""
 
 from agents.editor import EditorAgent
-from config import LLMConfig, Settings
+from config import LLMConfig, ProviderConfig, Settings
 from state import AgentState
 from tests.fakes import ScriptedLLM
 from utils.parsers import (
@@ -67,6 +67,7 @@ def test_format_grounding_section():
 
 def _editor(responses, max_fix_rounds=1):
     settings = Settings()
+    settings.provider = ProviderConfig(provider="ollama")
     settings.workflow.max_fix_rounds = max_fix_rounds
     llm = ScriptedLLM(responses)
     return EditorAgent(llm=llm, llm_config=LLMConfig(model="fake"), app_settings=settings), llm

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-TruthLens AI is a LangGraph multi-agent system (CLI + web UI) that researches a topic, writes a blog post, edits it, and fact-checks it against its own research, with a human-in-the-loop feedback/revision cycle. Everything runs locally and free: **Ollama** for the LLM (no API key, no rate limit) and **DuckDuckGo (via `ddgs`)** for web search (no API key, no quota). `README.md` covers the user-facing overview; this file covers the architecture.
+TruthLens AI is a LangGraph multi-agent system (CLI + web UI) that researches a topic, writes a blog post, edits it, and fact-checks it against its own research, with a human-in-the-loop feedback/revision cycle. It's free to run: by default the LLM is Google **Gemini**'s free tier (`gemini-2.5-flash`, needs only `LLM_API_KEY`), with Groq, any OpenAI-compatible API, or fully local **Ollama** as alternatives, and **DuckDuckGo (via `ddgs`)** for web search (no API key, no quota). The live deployment runs on Render. `README.md` covers the user-facing overview; this file covers the architecture.
 
 ## Running the system
 
@@ -16,9 +16,9 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt   # includes pytest
 
-# Ollama must be running locally with the configured model pulled
-ollama serve
-ollama pull llama3.1:8b   # or whatever config.py's AgentConfigs.model is set to
+# the default model is Gemini - put LLM_API_KEY=<your key> in .env
+# (for local Ollama instead: LLM_PROVIDER=ollama in .env, then)
+# ollama serve && ollama pull llama3.1:8b
 
 # run the interactive CLI
 python main.py
@@ -33,12 +33,12 @@ pytest tests/test_agents.py -v   # single file
 pytest -k determine_revision_target   # single test by name
 ```
 
-`main.py` validates Ollama connectivity/model availability on startup (`Settings.validate_ollama`) and exits with setup instructions if it can't reach `http://localhost:11434` or the model isn't pulled. If switching to a smaller/different model, update the model in `config.py` (`LLMConfig.model`, default `llama3.1:8b`) and re-pull it in Ollama.
+`main.py` validates the configured LLM on startup (`Settings.validate_llm`: for Gemini/Groq, that the key is set and accepted; for Ollama, that it's reachable and the model is pulled) and exits with setup instructions if not. For Ollama, the model is `config.py`'s `LLMConfig.model` (default `llama3.1:8b`); for hosted providers it's the preset in `PROVIDER_PRESETS` or `LLM_MODEL`.
 
 ## Deployment & backends
 
 Three things switch on environment variables (all in `config.py`, documented in the README's "Configuration" section):
-- **LLM backend** — `ProviderConfig`: `LLM_PROVIDER=ollama` (default) builds `ChatOllama`; `gemini` / `groq` / `openai_compatible` build `langchain_openai.ChatOpenAI` against an OpenAI-compatible endpoint (`BaseAgent._create_llm()`). `PROVIDER_PRESETS` holds each hosted provider's base URL, default model, `reasoning_effort` and reply cap — Groq's is lower because its free tier is 8K tokens/min, and one request must fit under that. `Settings.validate_llm()` dispatches to `validate_ollama()` or `validate_hosted()` (which calls `GET {base}/models`; Gemini rejects a bad key with **400**, Groq with 401). `server.py`'s `/api/health` caches that result (it calls the provider) and reports `provider`/`storage`. When hosted, `AgentConfigs` per-agent temperatures still apply but their `model`/`context_window` don't. `BaseAgent._invoke_llm_stream()` treats a hosted stream that ends without a `finish_reason` as a failed attempt (`IncompleteResponseError`) and retries it — Gemini preview models were seen cutting replies off mid-sentence under free-tier load, which is also why the Gemini preset uses the stable `gemini-2.5-flash`.
+- **LLM backend** — `ProviderConfig`: `LLM_PROVIDER=gemini` is the default; `ollama` builds `ChatOllama`, while `gemini` / `groq` / `openai_compatible` build `langchain_openai.ChatOpenAI` against an OpenAI-compatible endpoint (`BaseAgent._create_llm()`). `PROVIDER_PRESETS` holds each hosted provider's base URL, default model, `reasoning_effort` and reply cap — Groq's is lower because its free tier is 8K tokens/min, and one request must fit under that. `Settings.validate_llm()` dispatches to `validate_ollama()` or `validate_hosted()` (which calls `GET {base}/models`; Gemini rejects a bad key with **400**, Groq with 401). `server.py`'s `/api/health` caches that result (it calls the provider) and reports `provider`/`storage`. When hosted, `AgentConfigs` per-agent temperatures still apply but their `model`/`context_window` don't. `BaseAgent._invoke_llm_stream()` treats a hosted stream that ends without a `finish_reason` as a failed attempt (`IncompleteResponseError`) and retries it — Gemini preview models were seen cutting replies off mid-sentence under free-tier load, which is also why the Gemini preset uses the stable `gemini-2.5-flash`.
 - **Storage** — `utils/storage.py` routes to SQLite (`settings.storage.db_path`) or Postgres via pg8000 when `DATABASE_URL` is set; an explicit `db_path` argument always means SQLite (tests). All SQL uses `:named` params, which both drivers accept — keep it that way. The Postgres backend holds one connection behind a lock and reconnects once on failure (Neon suspends idle DBs). `tests/test_storage_postgres.py` covers it with a fake pg8000 connection, plus a real round-trip when `TEST_DATABASE_URL` is set.
 - **Sign-in** — see Web UI below.
 
@@ -86,7 +86,7 @@ Every `[n]` marker in research, blog and grounding notes means `state.research_s
 
 ### Context window sizing matters here
 
-Because the LLM is a local Ollama model, `num_ctx` (`LLMConfig.context_window`, default 16384) and `search.max_content_chars` (default 12000) are load-bearing: Ollama silently truncates to a 2048-token window if not told otherwise, which was the root cause of past truncated/hallucinated output (see comments in [config.py](config.py) and [agents/base.py](agents/base.py)). When changing the model, consider whether it needs a different `context_window`.
+When the LLM is a local Ollama model, `num_ctx` (`LLMConfig.context_window`, default 16384) and `search.max_content_chars` (default 12000) are load-bearing: Ollama silently truncates to a 2048-token window if not told otherwise, which was the root cause of past truncated/hallucinated output (see comments in [config.py](config.py) and [agents/base.py](agents/base.py)). When changing the model, consider whether it needs a different `context_window`.
 
 ### Adding a category
 
@@ -120,7 +120,7 @@ Pytest suite, all mocked — no test depends on Ollama or a network connection, 
 - `tests/test_server.py` — the web API via FastAPI's `TestClient`: per-user ownership on every run/history endpoint, 401s when signed out, input validation, the session thread, and the OAuth callback with a faked provider client. The real pipeline is replaced with a no-op so no LLM is touched.
 - `tests/test_grounding.py` — grounding-output parsing and the `verify_and_fix()` check → fix → re-check loop, driven by `tests/fakes.py:ScriptedLLM` (a different scripted response per call).
 - `tests/test_parsers.py`, `tests/test_state.py`, `tests/test_retry.py`, `tests/test_storage.py`, `tests/test_citations.py`, `tests/test_fetcher.py` — pure-logic and storage round-trip tests.
-- `tests/conftest.py` has autouse fixtures that reset the settings a developer's `.env` can change (provider back to Ollama, no `DATABASE_URL`, sign-in off — so tests never hit a real API or Postgres), no-op `time.sleep` everywhere (so retry/backoff paths don't slow the suite down) and make `requests.get` raise (the researcher fetches pages by default; tests inject a `page_fetcher` instead — `FakeLLM.prompts` records what each call was sent, for asserting on prompt contents).
+- `tests/conftest.py` has autouse fixtures that reset the settings a developer's `.env` can change (provider forced to Ollama, no `DATABASE_URL`, sign-in off — so tests never hit a real API or Postgres), no-op `time.sleep` everywhere (so retry/backoff paths don't slow the suite down) and make `requests.get` raise (the researcher fetches pages by default; tests inject a `page_fetcher` instead — `FakeLLM.prompts` records what each call was sent, for asserting on prompt contents).
 
 `pytest.ini` sets `pythonpath = .` so `from agents import ...`-style imports (matching how the app itself imports) work without installing the package.
 

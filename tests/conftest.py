@@ -31,12 +31,13 @@ def _no_real_network(monkeypatch):
 def _default_settings(monkeypatch):
     """
     Tests must not depend on the developer's .env: reset the settings it can
-    change to defaults - local Ollama provider (so fake LLMs aren't treated as
-    a hosted API), no DATABASE_URL (so nothing ever writes to a real
-    Postgres), and sign-in off. Tests that need otherwise set it themselves.
+    change - the Ollama provider (so fake LLMs aren't held to a hosted API's
+    finish_reason check, and nothing can reach a real API), no DATABASE_URL
+    (so nothing ever writes to a real Postgres), and sign-in off. Tests that
+    need otherwise set it themselves.
     """
     from config import AuthConfig, ProviderConfig, settings
 
-    monkeypatch.setattr(settings, "provider", ProviderConfig())
+    monkeypatch.setattr(settings, "provider", ProviderConfig(provider="ollama"))
     monkeypatch.setattr(settings, "auth", AuthConfig())
     monkeypatch.setattr(settings.storage, "database_url", "")

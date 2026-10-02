@@ -123,9 +123,10 @@ def test_researcher_survives_total_search_failure():
 # ---------- Full-page reading & numbered sources ----------
 
 def _settings(**search_overrides):
-    from config import Settings
+    from config import ProviderConfig, Settings
 
     s = Settings()
+    s.provider = ProviderConfig(provider="ollama")
     for key, value in search_overrides.items():
         setattr(s.search, key, value)
     return s

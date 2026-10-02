@@ -112,12 +112,13 @@ class ProviderConfig(BaseModel):
     """
     Which LLM backend the agents use.
 
-    "ollama" (default) is the local, free, no-key setup the project started
-    with. "gemini" / "groq" use a hosted free tier (see PROVIDER_PRESETS), and
-    "openai_compatible" is any other OpenAI-style API - set LLM_BASE_URL and
-    LLM_MODEL yourself. All hosted options need LLM_API_KEY.
+    "gemini" (default) uses Google's free hosted tier - only LLM_API_KEY is
+    needed. "groq" is the other hosted preset (see PROVIDER_PRESETS),
+    "openai_compatible" is any other OpenAI-style API (set LLM_BASE_URL and
+    LLM_MODEL yourself), and "ollama" is the fully local, no-key option the
+    project started with.
     """
-    provider: str = "ollama"
+    provider: str = "gemini"
     base_url: str = ""
     api_key: str = ""
     model: str = ""
@@ -150,7 +151,7 @@ class ProviderConfig(BaseModel):
     @classmethod
     def from_env(cls) -> "ProviderConfig":
         return cls(
-            provider=os.getenv("LLM_PROVIDER", "ollama").strip().lower() or "ollama",
+            provider=os.getenv("LLM_PROVIDER", "gemini").strip().lower() or "gemini",
             base_url=os.getenv("LLM_BASE_URL", ""),
             api_key=os.getenv("LLM_API_KEY", ""),
             model=os.getenv("LLM_MODEL", ""),
@@ -256,7 +257,14 @@ class Settings(BaseModel):
         if not p.resolved_model:
             errors.append("LLM_MODEL is not set.")
         if not p.api_key:
-            errors.append(f"LLM_API_KEY is not set - create a free API key for {p.provider} and set it.")
+            where = {
+                "gemini": " at https://aistudio.google.com/apikey",
+                "groq": " at https://console.groq.com/keys",
+            }.get(p.provider, "")
+            errors.append(
+                f"LLM_API_KEY is not set - create a free {p.provider} API key{where} and put "
+                f"LLM_API_KEY=<your key> in your .env file (or set LLM_PROVIDER=ollama to run locally)."
+            )
         if errors:
             return False, errors
 

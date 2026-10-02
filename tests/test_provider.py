@@ -12,10 +12,26 @@ def _settings(**provider):
     return s
 
 
-def test_default_is_ollama():
+def test_default_is_gemini():
+    from langchain_openai import ChatOpenAI
+
+    assert ProviderConfig().provider == "gemini"
+    writer = WriterAgent(llm_config=LLMConfig(model="x"), app_settings=_settings(api_key="k"))
+    assert isinstance(writer._llm, ChatOpenAI)
+    assert writer._llm.model_name == "gemini-2.5-flash"
+
+
+def test_env_defaults_to_gemini(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    assert ProviderConfig.from_env().provider == "gemini"
+    monkeypatch.setenv("LLM_PROVIDER", " Ollama ")
+    assert ProviderConfig.from_env().provider == "ollama"
+
+
+def test_ollama_when_selected():
     from langchain_ollama import ChatOllama
 
-    writer = WriterAgent(llm_config=LLMConfig(model="llama3.1:8b"), app_settings=Settings())
+    writer = WriterAgent(llm_config=LLMConfig(model="llama3.1:8b"), app_settings=_settings(provider="ollama"))
     assert isinstance(writer._llm, ChatOllama)
 
 
@@ -139,7 +155,7 @@ def test_hosted_stream_that_never_finishes_falls_back():
 
 def test_ollama_streams_are_not_finish_checked():
     llm = _StreamLLM([[("Local ", None), ("reply", None)]])
-    writer = WriterAgent(llm=llm, llm_config=LLMConfig(model="x"), app_settings=Settings())
+    writer = WriterAgent(llm=llm, llm_config=LLMConfig(model="x"), app_settings=_settings(provider="ollama"))
 
     assert writer._invoke_llm_stream("prompt") == "Local reply"
     assert llm.calls == 1
