@@ -53,6 +53,10 @@ class AgentState(BaseModel):
         default="",
         description="LLM assessment of blog claims not clearly supported by research_content"
     )
+    grounding_fixes: list[str] = Field(
+        default_factory=list,
+        description="Claims the editor auto-corrected after the grounding check flagged them (latest verify pass)"
+    )
 
     # Human feedback
     human_feedback: str = Field(

@@ -1,0 +1,99 @@
+"""Choosing the LLM backend: local Ollama (default) vs hosted OpenAI-compatible APIs."""
+
+import requests
+
+from agents.writer import WriterAgent
+from config import LLMConfig, ProviderConfig, Settings
+
+
+def _settings(**provider):
+    s = Settings()
+    s.provider = ProviderConfig(**provider)
+    return s
+
+
+def test_default_is_ollama():
+    from langchain_ollama import ChatOllama
+
+    writer = WriterAgent(llm_config=LLMConfig(model="llama3.1:8b"), app_settings=Settings())
+    assert isinstance(writer._llm, ChatOllama)
+
+
+def test_gemini_preset_builds_openai_compatible_client():
+    from langchain_openai import ChatOpenAI
+
+    s = _settings(provider="gemini", api_key="k")
+    writer = WriterAgent(llm_config=LLMConfig(model="ignored", temperature=0.7), app_settings=s)
+
+    llm = writer._llm
+    assert isinstance(llm, ChatOpenAI)
+    assert llm.model_name == "gemini-3.8-flash"
+    assert "generativelanguage.googleapis.com" in str(llm.openai_api_base)
+    assert llm.temperature == 0.7
+    assert llm.reasoning_effort == "low"
+    assert s.model_label == "gemini-3.8-flash"
+
+
+def test_env_style_overrides_beat_preset():
+    s = _settings(provider="groq", api_key="k", model="openai/gpt-oss-20b", max_tokens=1000)
+    llm = WriterAgent(llm_config=LLMConfig(model="x"), app_settings=s)._llm
+    assert llm.model_name == "openai/gpt-oss-20b"
+    assert llm.max_tokens == 1000
+
+
+def test_groq_preset_caps_reply_length_for_its_per_minute_limit():
+    llm = WriterAgent(llm_config=LLMConfig(model="x", max_tokens=4096), app_settings=_settings(provider="groq", api_key="k"))._llm
+    assert llm.max_tokens == 2500
+
+
+def test_validate_hosted_requires_api_key():
+    ok, errors = _settings(provider="gemini").validate_llm()
+    assert not ok
+    assert any("LLM_API_KEY" in e for e in errors)
+
+
+def test_validate_hosted_unknown_provider():
+    ok, errors = _settings(provider="openia", api_key="k").validate_llm()
+    assert not ok
+    assert any("Unknown LLM_PROVIDER" in e for e in errors)
+
+
+def test_validate_hosted_reports_rejected_key(monkeypatch):
+    class Resp:
+        status_code = 401
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
+    ok, errors = _settings(provider="groq", api_key="bad").validate_llm()
+    assert not ok and "rejected" in errors[0]
+
+
+def test_validate_hosted_ok(monkeypatch):
+    class Resp:
+        status_code = 200
+
+    calls = []
+    monkeypatch.setattr(requests, "get", lambda url, **k: calls.append((url, k["headers"])) or Resp())
+
+    ok, errors = _settings(provider="groq", api_key="secret").validate_llm()
+
+    assert ok and errors == []
+    assert calls[0][0] == "https://api.groq.com/openai/v1/models"
+    assert calls[0][1]["Authorization"] == "Bearer secret"
+
+
+def test_friendly_error_explains_rate_limits(monkeypatch):
+    import server
+    from config import settings
+
+    monkeypatch.setattr(settings, "provider", ProviderConfig(provider="groq", api_key="k"))
+    message = server._friendly_error(RuntimeError("Error code: 429 - rate_limit_exceeded"), "writing")
+    assert "rate limit" in message and "retry" in message
+
+
+def test_validate_hosted_treats_gemini_400_as_rejected_key(monkeypatch):
+    class Resp:
+        status_code = 400
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
+    ok, errors = _settings(provider="gemini", api_key="bad").validate_llm()
+    assert not ok and "rejected" in errors[0]

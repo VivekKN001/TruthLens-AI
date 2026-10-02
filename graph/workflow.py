@@ -61,8 +61,8 @@ def create_workflow(
         return editor.edit_blog(state, on_token=on_token)
 
     def grounding_node(state: AgentState) -> AgentState:
-        """Check the edited blog's claims against the research data"""
-        return editor.check_grounding(state, on_token=on_token)
+        """Check the edited blog's claims against the research data, fixing what it flags"""
+        return editor.verify_and_fix(state, on_token=on_token)
 
     # Add nodes to graph
     workflow.add_node("research", research_node)
@@ -131,8 +131,8 @@ def create_revision_workflow(
         return editor.edit_blog(state, on_token=on_token)
 
     def grounding_node(state: AgentState) -> AgentState:
-        """Check the revised blog's claims against the research data"""
-        return editor.check_grounding(state, on_token=on_token)
+        """Check the revised blog's claims against the research data, fixing what it flags"""
+        return editor.verify_and_fix(state, on_token=on_token)
 
     # Add nodes
     workflow.add_node("route_feedback", route_feedback_node)
@@ -204,7 +204,8 @@ AGENTS:
     - Corrects factual errors
     - Polishes language and structure
     - Runs a final grounding check: flags specific claims (numbers, quotes,
-      dates) in the finished post that the research doesn't actually support
+      dates) in the finished post that the research doesn't actually support,
+      auto-corrects them, and re-checks before handing the post to you
 
 ════════════════════════════════════════════════════════════════
 """)

@@ -44,7 +44,7 @@ YOUR APPROACH:
 4. Acknowledge complexity but don't use it to avoid conclusions
 5. Show impact on real people and society
 6. Provide context for why this matters now
-7. Link to original sources for reader verification
+7. Cite sources inline with their [n] markers so readers can verify every claim
 
 BLOG STRUCTURE:
 - Attention-grabbing, truthful headline
@@ -54,7 +54,6 @@ BLOG STRUCTURE:
 - Different perspectives (presented fairly but critically)
 - Impact: How this affects people and society
 - What should happen next
-- Sources and verifiable evidence
 
 TONE: Direct, unsparing, truthful. Don't soften harsh realities. Name wrongdoing. Be fair to facts.
 

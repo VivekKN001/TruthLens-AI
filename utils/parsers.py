@@ -151,3 +151,122 @@ def determine_revision_target(feedback: str) -> str:
     # If both or neither, prefer editor for general improvements
     # (editor is better at polishing)
     return "editor_revise"
+
+
+@dataclass
+class GroundingIssue:
+    """One claim the grounding check says the research doesn't support"""
+    claim: str
+    problem: str = ""
+    fix: str = ""
+
+    def describe(self) -> str:
+        """Human-readable one-liner, used for notes and the auto-fix log"""
+        text = f'"{self.claim}"' if self.problem else self.claim
+        if self.problem:
+            text += f" — {self.problem}"
+        return text
+
+
+# A bullet that just says "nothing to report" rather than flagging a claim.
+_NO_ISSUE_RE = re.compile(
+    r"^(none|n/?a|no (unsupported|issues|problems)|all (specific )?claims (are )?supported)\b",
+    re.IGNORECASE,
+)
+_BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.*\S)\s*$")
+_STRUCTURED_RE = re.compile(
+    r'CLAIM:\s*"?(?P<claim>.*?)"?\s*\|\s*PROBLEM:\s*(?P<problem>.*?)\s*(?:\|\s*FIX:\s*(?P<fix>.*?))?\s*$',
+    re.IGNORECASE,
+)
+
+
+def parse_grounding_issues(response: str) -> list[GroundingIssue]:
+    """
+    Parse the grounding check's response into individual flagged claims.
+
+    The prompt asks for one bullet per claim as
+    `- CLAIM: "..." | PROBLEM: ... | FIX: ...`, or the line
+    `ALL CLAIMS SUPPORTED`. Small local models don't always follow that, so a
+    plain bullet is still treated as one flagged claim, and bullets that just
+    say "none" are ignored.
+
+    Args:
+        response: Raw grounding-check LLM output
+
+    Returns:
+        Flagged claims, in order (empty if everything is supported)
+    """
+    issues = []
+    for line in (response or "").splitlines():
+        bullet = _BULLET_RE.match(line)
+        if not bullet:
+            continue
+        body = bullet.group(1).strip()
+        structured = _STRUCTURED_RE.search(body)
+        if structured:
+            claim = structured.group("claim").strip().strip('"“”')
+            if claim:
+                issues.append(GroundingIssue(
+                    claim=claim,
+                    problem=structured.group("problem").strip(),
+                    fix=(structured.group("fix") or "").strip(),
+                ))
+        elif not _NO_ISSUE_RE.match(body.strip("*_ ")):
+            issues.append(GroundingIssue(claim=body))
+    return issues
+
+
+def format_grounding_notes(response: str, issues: list[GroundingIssue]) -> str:
+    """
+    Turn the raw grounding response into the readable notes shown to the user.
+
+    Args:
+        response: Raw grounding-check LLM output
+        issues: What parse_grounding_issues() found in it
+
+    Returns:
+        Markdown bullet list of flagged claims, or a one-line all-clear
+    """
+    if issues:
+        lines = []
+        for issue in issues:
+            line = f"- {issue.describe()}"
+            if issue.fix and issue.fix.lower().rstrip(".") != "remove":
+                line += f" (research supports: {issue.fix})"
+            lines.append(line)
+        return "\n".join(lines)
+    text = (response or "").strip()
+    if not text or "ALL CLAIMS SUPPORTED" in text.upper():
+        return "All specific claims are supported by the research."
+    return text
+
+
+_PREAMBLE_RE = re.compile(r"^\s*(here(?:'s| is)|below is|sure|okay|certainly)\b[^\n]*:\s*\n+", re.IGNORECASE)
+
+
+def strip_response_preamble(response: str) -> str:
+    """Drop a chatty "Here is the corrected post:" opener a model sometimes adds."""
+    return _PREAMBLE_RE.sub("", response or "", count=1).strip()
+
+
+def format_grounding_section(grounding_notes: str, grounding_fixes: list[str]) -> str:
+    """
+    The "Grounding Check" section appended to an exported post (CLI save and
+    web /download), listing what was auto-corrected and anything still flagged.
+
+    Args:
+        grounding_notes: Notes from the last grounding check
+        grounding_fixes: Claims auto-corrected before review
+
+    Returns:
+        Markdown section (with leading blank lines), or "" if there's nothing to report
+    """
+    if not grounding_notes and not grounding_fixes:
+        return ""
+    section = "\n\n## Grounding Check\n\n"
+    if grounding_fixes:
+        section += "**Auto-corrected before review:**\n\n"
+        section += "\n".join(f"- {fix}" for fix in grounding_fixes) + "\n\n"
+        if grounding_notes:
+            section += "**After correction:**\n\n"
+    return section + (grounding_notes or "") + "\n"

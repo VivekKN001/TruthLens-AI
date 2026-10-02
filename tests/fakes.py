@@ -20,6 +20,10 @@ class FakeLLM:
         self.fail_times = fail_times
         self.exception = exception or RuntimeError("simulated LLM failure")
         self.calls = 0
+        self.prompts = []  # text of the last message of every call, for asserting on prompt contents
+
+    def _record(self, messages):
+        self.prompts.append(messages[-1].content if messages else "")
 
     def _maybe_fail(self):
         self.calls += 1
@@ -27,10 +31,12 @@ class FakeLLM:
             raise self.exception
 
     def invoke(self, messages):
+        self._record(messages)
         self._maybe_fail()
         return FakeMessage(self.response)
 
     def stream(self, messages):
+        self._record(messages)
         self._maybe_fail()
         for chunk in self.chunks:
             yield FakeChunk(chunk)
@@ -50,3 +56,24 @@ class FakeSearchClient:
         if self.calls <= self.fail_times:
             raise self.exception
         return self.results
+
+
+class ScriptedLLM(FakeLLM):
+    """A FakeLLM that returns the next scripted response on each call (repeating the last one)."""
+
+    def __init__(self, responses):
+        super().__init__(response=responses[0])
+        self.responses = list(responses)
+
+    def _next(self):
+        return self.responses[min(self.calls, len(self.responses)) - 1]
+
+    def invoke(self, messages):
+        self._record(messages)
+        self._maybe_fail()
+        return FakeMessage(self._next())
+
+    def stream(self, messages):
+        self._record(messages)
+        self._maybe_fail()
+        yield FakeChunk(self._next())

@@ -6,6 +6,7 @@ from langchain_ollama import ChatOllama
 from agents.base import BaseAgent
 from config import Settings, settings, LLMConfig
 from state import AgentState
+from prompts.citation_rules import CITATION_RULES, KEEP_CITATIONS_RULE
 from prompts.writer_prompts import (
     WRITER_SCIENCE,
     WRITER_POLITICS,
@@ -94,19 +95,15 @@ STRICT REQUIREMENTS:
   new section, mentally check it doesn't restate something already covered earlier in the post.
 - Do NOT pad length by rephrasing earlier paragraphs. Only write as much as the research actually
   supports - a well-argued shorter post beats a repetitive longer one.
-- Explain and synthesize facts in your own words. Do NOT use a link or citation as a substitute for
-  explaining something - the reader should get the actual information from your writing, not be sent
-  elsewhere to find it. Use at most 3-4 inline source mentions in the entire post, only where the
-  exact source matters (e.g. a direct quote or a statistic).
 - Only write about what the research data actually supports. If the research doesn't cover something,
   leave it out rather than inventing specifics (numbers, quotes, names, dates) that aren't in the
   research.
+{CITATION_RULES}
 
 Guidelines:
 - Target audience: {audience}
 - Make it informative but accessible
 - Use the research data provided as your factual grounding
-- Include a short "Sources" list at the very end (this doesn't count toward inline source mentions)
 - Length: as long as the research genuinely supports, up to about 1500-2000 words. Do not stretch
   thin research to hit a word count.
 - Make it compelling and keep readers engaged
@@ -143,6 +140,7 @@ Revise the blog post based on the human feedback provided above.
 - Incorporate their suggestions and make improvements
 - Keep the focus ONLY on "{state.topic}"
 - Do NOT add unrelated content
+{KEEP_CITATIONS_RULE}
 
 Revised blog post (staying focused on "{state.topic}"):
 """
@@ -172,7 +170,7 @@ Revised blog post (staying focused on "{state.topic}"):
         blog_draft = self._invoke_llm_stream_safe(writing_prompt, on_token=on_token, fallback=fallback_content)
 
         # Update state
-        state.blog_draft = blog_draft
+        state.blog_draft = self._clean_citations(state, blog_draft)
         state.messages.append(f"Writer: Created blog draft ({len(blog_draft)} characters)")
 
         self.logger.result("Blog draft created", f"{len(blog_draft)} characters")
@@ -198,7 +196,7 @@ Revised blog post (staying focused on "{state.topic}"):
         revised_blog = self._invoke_llm_stream_safe(revision_prompt, on_token=on_token, fallback=state.blog_draft)
 
         # Update state
-        state.blog_draft = revised_blog
+        state.blog_draft = self._clean_citations(state, revised_blog)
         state.iteration_count += 1
         state.messages.append(
             f"Writer: Revised blog draft based on feedback (iteration {state.iteration_count})"

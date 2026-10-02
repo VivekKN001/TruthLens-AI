@@ -4,91 +4,306 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>TruthLens AI</title>
+<meta name="theme-color" content="#0a1513" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233ee6d0'/%3E%3Ccircle cx='14' cy='14' r='6.5' fill='none' stroke='%2306231f' stroke-width='3'/%3E%3Cpath d='M19 19l6 6' stroke='%2306231f' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/style.css" />
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
 </head>
 <body>
 
+<!-- Ambient layers: constellation canvas + a soft glow that follows the cursor -->
+<canvas id="bg-canvas" class="bg-canvas" aria-hidden="true"></canvas>
+<div id="cursor-glow" class="cursor-glow" aria-hidden="true"></div>
+<canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
+
 <div class="app-shell">
 
-  <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
   <aside id="sidebar" class="sidebar">
     <div class="sidebar-header">
-      <span class="brand-mark">TL</span>
-      <span class="brand-name">TruthLens AI</span>
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </span>
+      <span class="brand-name">TruthLens<span class="brand-ai">AI</span></span>
     </div>
 
-    <button id="new-topic-sidebar-btn" class="btn btn-primary sidebar-new-btn">+ New Topic</button>
+    <button id="new-topic-sidebar-btn" class="btn btn-primary sidebar-new-btn">
+      <span aria-hidden="true">+</span> New Topic
+    </button>
 
     <div class="sidebar-section-label">History</div>
-    <p id="history-empty" class="sidebar-empty hidden">No topics yet.</p>
+    <p id="history-empty" class="sidebar-empty hidden">No topics yet. Your finished articles will show up here.</p>
     <ul id="history-list" class="history-list"></ul>
+
+    <div id="signin-card" class="signin-card hidden">
+      <p><b>Sign in to keep your history.</b> Every topic you research is saved to your account as a conversation you can come back to.</p>
+      <button class="btn btn-primary btn-sm" data-open-signin>Sign in</button>
+    </div>
+
+    <div id="user-row" class="user-row hidden">
+      <span class="user-avatar" id="user-avatar"></span>
+      <span class="user-name" id="user-name"></span>
+      <button class="btn btn-ghost btn-sm" id="signout-btn" title="Sign out">Sign out</button>
+    </div>
+
+    <div class="sidebar-footer">
+      <span class="status-dot" id="sidebar-status-dot"></span>
+      <span id="sidebar-status-text">Checking model…</span>
+    </div>
   </aside>
 
-  <div class="main-area">
+  <div class="main-area" id="main-scroll">
+    <div class="read-progress" aria-hidden="true"><span id="read-progress-bar"></span></div>
+
     <header class="topbar">
       <button id="sidebar-toggle-btn" class="btn btn-ghost sidebar-toggle" aria-label="Toggle history">&#9776;</button>
-      <p class="tagline">Research. Write. Verify.</p>
+      <p class="tagline"><span>Research</span><i></i><span>Write</span><i></i><span>Verify</span></p>
+      <div class="model-pill" id="model-pill" title="Local model status">
+        <span class="status-dot"></span><span id="model-pill-text">connecting…</span>
+      </div>
     </header>
 
     <main id="app" class="container">
 
       <div id="health-banner" class="banner banner-error hidden"></div>
 
-      <!-- SCREEN: Setup -->
-      <section id="screen-setup" class="screen">
-        <h1>What should we look into?</h1>
-        <p class="subtitle">Pick a category, describe a topic, and TruthLens will research it, write it up, and let you refine it before publishing.</p>
+      <!-- SCREEN: Setup / landing -->
+      <section id="screen-setup" class="screen screen-wide">
 
-        <div id="category-cards" class="category-cards"></div>
+        <div class="hero">
+          <div class="hero-copy">
+            <span class="eyebrow reveal"><span class="eyebrow-dot"></span>100% local · zero API keys · self fact-checking</span>
+            <h1 class="hero-title reveal" style="--d: 80ms">
+              Research.<br />Write.<br /><span class="grad-text">Verify.</span>
+            </h1>
+            <p class="hero-sub reveal" style="--d: 160ms">
+              Ask TruthLens about <span class="typer" id="typer"></span><span class="typer-caret" aria-hidden="true"></span>
+            </p>
 
-        <div class="field">
-          <label for="topic-input">Topic</label>
-          <input id="topic-input" type="text" placeholder="e.g. The impact of quantum computing on cybersecurity" autocomplete="off" />
-          <div id="example-chips" class="chips"></div>
+            <div class="composer reveal" style="--d: 240ms" id="composer">
+              <div class="composer-label"><span class="step-num">1</span> Pick a lens</div>
+              <div id="category-cards" class="category-cards"></div>
+
+              <div class="field">
+                <label for="topic-input" class="composer-label"><span class="step-num">2</span> Name a topic</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <input id="topic-input" type="text" placeholder="e.g. The impact of quantum computing on cybersecurity" autocomplete="off" />
+                  <kbd class="input-kbd">Enter ↵</kbd>
+                </div>
+                <div id="example-chips" class="chips"></div>
+              </div>
+
+              <button id="start-btn" class="btn btn-primary btn-lg btn-shine" disabled>
+                Start Research
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <p class="composer-hint" id="composer-hint">Choose a category to get started.</p>
+            </div>
+          </div>
+
+          <div class="hero-visual reveal" style="--d: 200ms" id="hero-visual">
+            <div class="portal" id="portal">
+              <div class="portal-ring"></div>
+              <div class="portal-ring portal-ring-2"></div>
+              <div class="portal-frame">
+                <video id="hero-video" class="portal-video" src="/static/videos/researching.mp4" autoplay muted loop playsinline disablepictureinpicture></video>
+              </div>
+              <div class="orbit"><span></span><span></span><span></span></div>
+              <div class="float-card fc-1"><span class="fc-icon">🔍</span><div><b>4 searches</b><small>deduped &amp; synthesized</small></div></div>
+              <div class="float-card fc-2"><span class="fc-icon ok">✓</span><div><b>Claim verified</b><small>backed by research</small></div></div>
+              <div class="float-card fc-3"><span class="fc-icon warn">!</span><div><b>Flagged</b><small>“millions” → “thousands”</small></div></div>
+            </div>
+          </div>
         </div>
 
-        <button id="start-btn" class="btn btn-primary" disabled>Start Research</button>
+        <button class="scroll-cue" id="scroll-cue" aria-label="Scroll to how it works">
+          <span>See how it works</span>
+          <span class="scroll-cue-mouse"><i></i></span>
+        </button>
+
+        <!-- Scrollytelling: the stage on the right swaps phase videos as each step scrolls into focus -->
+        <section class="story" id="story">
+          <div class="section-head reveal">
+            <span class="eyebrow"><span class="eyebrow-dot"></span>How it works</span>
+            <h2>Four agents. One honest article.</h2>
+            <p>Every topic passes through a researcher, a writer, an editor and a fact-checker, all running on your machine, before it reaches you.</p>
+          </div>
+
+          <div class="story-grid">
+            <div class="story-steps" id="story-steps">
+              <article class="story-step" data-phase="researching">
+                <span class="story-num">01</span>
+                <h3>Research</h3>
+                <p>Four DuckDuckGo searches run in parallel angles: the topic itself, its category, recent research and the latest news. Results are deduplicated and synthesized into a structured brief.</p>
+                <ul class="story-tags"><li>ddgs search</li><li>dedupe by URL</li><li>retry w/ backoff</li></ul>
+              </article>
+              <article class="story-step" data-phase="writing">
+                <span class="story-num">02</span>
+                <h3>Write</h3>
+                <p>The writer turns the brief into a full blog post, tuned to the audience and tone of the category you picked, and streams it to you token by token.</p>
+                <ul class="story-tags"><li>category voice</li><li>live streaming</li></ul>
+              </article>
+              <article class="story-step" data-phase="editing">
+                <span class="story-num">03</span>
+                <h3>Edit</h3>
+                <p>A stricter, lower-temperature editor tightens structure, removes repetition and checks the draft against the research it came from.</p>
+                <ul class="story-tags"><li>structure</li><li>tone</li><li>accuracy</li></ul>
+              </article>
+              <article class="story-step" data-phase="verifying">
+                <span class="story-num">04</span>
+                <h3>Verify</h3>
+                <p>A final grounding pass hunts for numbers, dates, names and quotes that the research doesn't support. The editor corrects what it finds and the post is checked again, so hallucinated specifics get fixed, not published.</p>
+                <ul class="story-tags"><li>grounding check</li><li>auto-correct</li><li>re-check</li></ul>
+              </article>
+            </div>
+
+            <div class="story-stage">
+              <div class="stage-frame">
+                <video id="story-video" class="stage-video" muted loop playsinline disablepictureinpicture preload="none"></video>
+                <div class="stage-label" id="stage-label">01 · Research</div>
+                <div class="stage-scan" aria-hidden="true"></div>
+              </div>
+              <div class="stage-segments" id="stage-segments"><span></span><span></span><span></span><span></span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="features">
+          <div class="section-head reveal">
+            <span class="eyebrow"><span class="eyebrow-dot"></span>Why TruthLens</span>
+            <h2>Built to be trusted, not just fluent.</h2>
+          </div>
+          <div class="feature-grid">
+            <div class="feature-card reveal" style="--d: 0ms">
+              <div class="feature-icon">⌂</div>
+              <h3>Runs on your machine</h3>
+              <p>Ollama for the model, DuckDuckGo for search. No API keys, no quotas, no bill.</p>
+            </div>
+            <div class="feature-card reveal" style="--d: 80ms">
+              <div class="feature-icon">✓</div>
+              <h3>Checks its own work</h3>
+              <p>A grounding pass flags claims the research doesn't actually back up.</p>
+            </div>
+            <div class="feature-card reveal" style="--d: 160ms">
+              <div class="feature-icon">↻</div>
+              <h3>You stay in the loop</h3>
+              <p>Approve, re-research, or describe changes. Feedback is routed to the right agent.</p>
+            </div>
+            <div class="feature-card reveal" style="--d: 240ms">
+              <div class="feature-icon">≋</div>
+              <h3>Watch it think</h3>
+              <p>Every phase streams live, and a failed phase can be retried without starting over.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="cta-final reveal">
+          <h2>Ready when you are.</h2>
+          <p>Pick a topic and see what the evidence actually says.</p>
+          <button class="btn btn-primary btn-lg btn-shine" id="cta-top-btn">Start a topic ↑</button>
+        </section>
       </section>
 
       <!-- SCREEN: Progress -->
-      <section id="screen-progress" class="screen hidden">
-        <h1 id="progress-title">Working on it&hellip;</h1>
-        <p class="subtitle" id="progress-topic"></p>
+      <section id="screen-progress" class="screen screen-wide hidden">
+        <div class="progress-head">
+          <div>
+            <span class="eyebrow" id="progress-topic-chip"><span class="eyebrow-dot"></span><span id="progress-topic"></span></span>
+            <h1 id="progress-title">Working on it<span class="dots"><i>.</i><i>.</i><i>.</i></span></h1>
+          </div>
+          <div class="elapsed" title="Elapsed time">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l2.5 2.5M9 2h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span id="elapsed-time">0:00</span>
+          </div>
+        </div>
 
-        <ol class="stepper">
-          <li id="step-researching" data-step="researching"><span class="dot"></span>Research</li>
-          <li id="step-writing" data-step="writing"><span class="dot"></span>Write</li>
-          <li id="step-editing" data-step="editing"><span class="dot"></span>Edit</li>
-          <li id="step-verifying" data-step="verifying"><span class="dot"></span>Verify</li>
-        </ol>
+        <div class="overall-progress"><span id="overall-progress-bar"></span></div>
 
-        <pre id="stream-preview" class="stream-preview hidden"></pre>
+        <div class="progress-grid">
+          <div class="progress-visual">
+            <div class="stage-frame stage-frame-live">
+              <video id="phase-video" class="stage-video" autoplay muted loop playsinline disablepictureinpicture></video>
+              <div class="stage-label" id="phase-label">Starting…</div>
+              <div class="stage-scan" aria-hidden="true"></div>
+            </div>
+          </div>
 
-        <p class="hint">This runs a local model, so it can take a couple of minutes. Feel free to wait &mdash; no need to refresh.</p>
+          <div class="progress-side">
+            <ol class="timeline">
+              <li id="step-researching" data-step="researching">
+                <span class="tl-icon">🔍</span>
+                <div class="tl-body"><b>Research</b><small>Searching &amp; synthesizing sources</small></div>
+                <span class="tl-time"></span>
+              </li>
+              <li id="step-writing" data-step="writing">
+                <span class="tl-icon">✎</span>
+                <div class="tl-body"><b>Write</b><small>Drafting the article</small></div>
+                <span class="tl-time"></span>
+              </li>
+              <li id="step-editing" data-step="editing">
+                <span class="tl-icon">✂</span>
+                <div class="tl-body"><b>Edit</b><small>Tightening &amp; fact-checking</small></div>
+                <span class="tl-time"></span>
+              </li>
+              <li id="step-verifying" data-step="verifying">
+                <span class="tl-icon">✓</span>
+                <div class="tl-body"><b>Verify</b><small>Fact-check, fix &amp; re-check</small></div>
+                <span class="tl-time"></span>
+              </li>
+            </ol>
 
-        <div class="phase-animation">
-          <video id="phase-video" class="phase-video" autoplay muted loop playsinline disablepictureinpicture></video>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
+                <span class="terminal-title">live output</span>
+                <span class="terminal-count" id="token-count">waiting for tokens…</span>
+              </div>
+              <pre id="stream-preview" class="stream-preview"><span class="stream-placeholder">The model's output will stream here as it's generated.</span></pre>
+            </div>
+
+            <p class="hint">This runs a local model, so it can take a couple of minutes. No need to refresh, and you can leave this tab.</p>
+          </div>
         </div>
 
         <div id="progress-error" class="progress-error hidden">
-          <p id="progress-error-message"></p>
-          <div class="feedback-actions">
-            <button id="retry-btn" class="btn btn-primary">Retry</button>
-            <button id="abandon-btn" class="btn btn-ghost">Start Over</button>
+          <div class="progress-error-icon">!</div>
+          <div>
+            <p id="progress-error-message"></p>
+            <div class="feedback-actions">
+              <button id="retry-btn" class="btn btn-primary">Retry this step</button>
+              <button id="abandon-btn" class="btn btn-ghost">Start Over</button>
+            </div>
           </div>
         </div>
       </section>
 
       <!-- SCREEN: Review -->
       <section id="screen-review" class="screen hidden">
-        <div class="review-header">
+        <div class="article-head">
+          <div class="article-meta-row">
+            <span class="cat-chip" id="review-category"></span>
+            <span class="badge" id="review-iteration"></span>
+          </div>
           <h1 id="review-title"></h1>
-          <span class="badge" id="review-iteration"></span>
+          <div class="stats-row">
+            <span><b id="review-words">0</b> words</span>
+            <span><b id="review-read">0</b> min read</span>
+            <span><b id="review-sources-count">0</b> sources</span>
+            <button class="btn btn-ghost btn-sm" id="copy-review-btn">Copy markdown</button>
+          </div>
         </div>
 
-        <article id="blog-content" class="blog-content"></article>
+        <div id="review-grounding-callout" class="callout hidden"></div>
+
+        <article id="blog-content" class="blog-content prose"></article>
 
         <details class="collapsible">
           <summary>Research findings</summary>
@@ -102,55 +317,97 @@
 
         <details id="grounding-section" class="collapsible hidden">
           <summary>Grounding check</summary>
-          <pre id="grounding-content" class="research-content"></pre>
+          <div id="grounding-content" class="prose prose-sm"></div>
+        </details>
+
+        <details id="review-thread-section" class="collapsible hidden">
+          <summary id="review-thread-summary">Conversation so far</summary>
+          <div id="review-thread" class="thread"></div>
         </details>
 
         <div class="feedback-panel">
           <h2>What do you think?</h2>
+          <p class="hint">Approve it, start the research over, or tell the agents what to change. Style requests go to the writer, polish requests go to the editor.</p>
           <div class="feedback-actions">
-            <button id="approve-btn" class="btn btn-primary">Approve &amp; Finish</button>
+            <button id="approve-btn" class="btn btn-primary btn-shine">Approve &amp; Finish</button>
             <button id="reresearch-btn" class="btn btn-ghost">Re-research from scratch</button>
           </div>
           <div class="field">
             <label for="feedback-input">Or describe changes you'd like</label>
+            <div id="quick-feedback" class="chips chips-quick"></div>
             <textarea id="feedback-input" rows="3" placeholder="e.g. make the intro punchier, or fix the grammar in paragraph 2"></textarea>
           </div>
           <button id="revise-btn" class="btn btn-secondary">Request Changes</button>
-          <p id="max-iterations-note" class="hint hidden">Maximum revisions reached &mdash; approve or start a new topic.</p>
+          <p id="max-iterations-note" class="hint hidden">Maximum revisions reached. Approve it or start a new topic.</p>
         </div>
       </section>
 
       <!-- SCREEN: Done -->
       <section id="screen-done" class="screen hidden">
-        <h1>Ready to publish</h1>
-        <p class="subtitle">Your post is finalized.</p>
-        <div class="done-actions">
-          <a id="download-link" class="btn btn-primary" href="#">Download .md</a>
-          <button id="new-topic-btn" class="btn btn-ghost">Start a new topic</button>
+        <div class="done-hero">
+          <svg class="done-check" viewBox="0 0 80 80" aria-hidden="true">
+            <circle cx="40" cy="40" r="36" />
+            <path d="M24 41l11 11 22-24" />
+          </svg>
+          <h1>Ready to publish</h1>
+          <p class="subtitle">Your post is finalized and saved to history.</p>
+          <div class="done-actions">
+            <a id="download-link" class="btn btn-primary btn-shine" href="#">Download .md</a>
+            <button id="copy-done-btn" class="btn btn-secondary">Copy markdown</button>
+            <button id="new-topic-btn" class="btn btn-ghost">Start a new topic</button>
+          </div>
         </div>
+        <article id="done-preview" class="blog-content prose"></article>
       </section>
 
       <!-- SCREEN: History detail (read-only) -->
       <section id="screen-history-detail" class="screen hidden">
-        <div class="review-header">
+        <div class="article-head">
+          <div class="article-meta-row">
+            <span class="cat-chip" id="history-detail-category"></span>
+            <span class="badge" id="history-detail-meta"></span>
+          </div>
           <h1 id="history-detail-title"></h1>
-          <span class="badge" id="history-detail-meta"></span>
+          <div class="stats-row">
+            <span><b id="history-words">0</b> words</span>
+            <span><b id="history-read">0</b> min read</span>
+            <span id="history-date"></span>
+          </div>
         </div>
-        <article id="history-detail-content" class="blog-content"></article>
+        <h2 class="thread-heading">Conversation</h2>
+        <div id="history-thread" class="thread"></div>
         <details class="collapsible">
           <summary id="history-detail-sources-summary">Sources</summary>
           <ul id="history-detail-sources" class="sources-list"></ul>
         </details>
         <details id="history-detail-grounding-section" class="collapsible hidden">
           <summary>Grounding check</summary>
-          <pre id="history-detail-grounding" class="research-content"></pre>
+          <div id="history-detail-grounding" class="prose prose-sm"></div>
         </details>
         <div class="done-actions">
           <a id="history-detail-download" class="btn btn-primary" href="#">Download .md</a>
         </div>
       </section>
 
-      <div id="error-toast" class="toast hidden"></div>
+      <div id="error-toast" class="toast" role="status" aria-live="polite"></div>
+
+      <!-- Sign-in modal (only used when the server has Google/GitHub sign-in configured) -->
+      <div id="signin-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signin-title">
+        <div class="modal-backdrop" data-close-signin></div>
+        <div class="modal-card">
+          <button class="modal-close" data-close-signin aria-label="Close">&times;</button>
+          <span class="brand-mark modal-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+          </span>
+          <h2 id="signin-title">Sign in to TruthLens</h2>
+          <p class="hint">Your research sessions are saved to your account, so you can pick up any conversation later, from any device.</p>
+          <div class="signin-providers">
+            <a class="btn btn-provider hidden" id="signin-google" href="/auth/login/google"><svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>Continue with Google</span></a>
+            <a class="btn btn-provider hidden" id="signin-github" href="/auth/login/github"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Continue with GitHub</span></a>
+          </div>
+          <p class="modal-fine">We only read your name, email and profile picture.</p>
+        </div>
+      </div>
 
     </main>
   </div>

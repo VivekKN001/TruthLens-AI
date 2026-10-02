@@ -16,6 +16,7 @@ from state import AgentState
 from graph.workflow import create_workflow, create_revision_workflow, print_workflow_info
 from utils import storage
 from utils.logger import get_logger
+from utils.parsers import determine_revision_target, format_grounding_section
 
 logger = get_logger(__name__)
 
@@ -207,8 +208,7 @@ def save_blog_to_file(state: AgentState) -> None:
     for i, source in enumerate(state.research_sources, 1):
         content += f"{i}. {source}\n"
 
-    if state.grounding_notes:
-        content += f"\n## Grounding Check\n\n{state.grounding_notes}\n"
+    content += format_grounding_section(state.grounding_notes, state.grounding_fixes)
 
     try:
         filepath.write_text(content, encoding="utf-8")
@@ -223,6 +223,14 @@ def _persist(run_id: str, state: AgentState, status: str) -> None:
         storage.save_run(run_id, state, status)
     except Exception as e:
         logger.warning(f"Could not save run history: {e}")
+
+
+def _log_event(run_id: str, role: str, kind: str, data: dict | None = None) -> None:
+    """Best-effort append to the run's session thread (shown in the web UI's history)."""
+    try:
+        storage.add_event(run_id, role, kind, data)
+    except Exception as e:
+        logger.warning(f"Could not record '{kind}' in run history: {e}")
 
 
 def run_workflow(category: str, topic: str) -> AgentState:
@@ -262,6 +270,7 @@ def run_workflow(category: str, topic: str) -> AgentState:
     print("Phase 2: Writing blog post...")
     print("Phase 3: Editing and polishing...\n")
 
+    _log_event(run_id, "user", "topic", {"category": category, "topic": topic})
     result = full_workflow.invoke(state)
 
     # Update state with results
@@ -271,6 +280,7 @@ def run_workflow(category: str, topic: str) -> AgentState:
         state = result
 
     _persist(run_id, state, "awaiting_feedback")
+    _log_event(run_id, "assistant", "draft", storage.draft_event_data(state))
 
     # Main feedback loop
     iteration = 0
@@ -300,6 +310,12 @@ def run_workflow(category: str, topic: str) -> AgentState:
                 settings.workflow.content_preview_length,
             )
 
+        if state.grounding_fixes:
+            display_content(
+                "\n".join(f"- {fix}" for fix in state.grounding_fixes),
+                f"AUTO-CORRECTED {len(state.grounding_fixes)} CLAIM(S) THE GROUNDING CHECK FLAGGED",
+                800,
+            )
         if state.grounding_notes:
             display_content(state.grounding_notes, "GROUNDING CHECK (claims not clearly backed by research)", 800)
 
@@ -312,6 +328,7 @@ def run_workflow(category: str, topic: str) -> AgentState:
             logger.info("Content finalized and ready for publication")
             print("Content has been finalized and is ready for publication!")
             _persist(run_id, state, "done")
+            _log_event(run_id, "user", "approved")
 
             save_option = input("\nWould you like to save this blog to a file? (y/n): ").strip().lower()
             if save_option == "y":
@@ -322,6 +339,7 @@ def run_workflow(category: str, topic: str) -> AgentState:
         if re_research:
             # User wants to re-research from scratch
             print("\nRe-researching topic from scratch...")
+            _log_event(run_id, "user", "reresearch")
             state = AgentState(
                 category=category,
                 topic=topic,
@@ -334,12 +352,17 @@ def run_workflow(category: str, topic: str) -> AgentState:
             else:
                 state = result
             _persist(run_id, state, "awaiting_feedback")
+            _log_event(run_id, "assistant", "draft", storage.draft_event_data(state))
             continue
 
         # User provided feedback - run revision workflow
         print(f"\nRevising based on feedback: '{feedback[:50]}...'")
         state.human_feedback = feedback
         state.human_approved = False
+        _log_event(run_id, "user", "feedback", {
+            "text": feedback,
+            "routed_to": "writer" if determine_revision_target(feedback) == "writer_revise" else "editor",
+        })
 
         result = revision_workflow.invoke(state)
         if isinstance(result, dict):
@@ -347,6 +370,7 @@ def run_workflow(category: str, topic: str) -> AgentState:
         else:
             state = result
         _persist(run_id, state, "awaiting_feedback")
+        _log_event(run_id, "assistant", "draft", storage.draft_event_data(state))
 
     # Max iterations reached
     logger.warning("Maximum revision iterations reached. Finalizing current version...")
@@ -363,13 +387,22 @@ def run_workflow(category: str, topic: str) -> AgentState:
 
 def validate_environment() -> bool:
     """
-    Validate that the local Ollama server is running and has the model pulled.
-    No API keys needed - everything here is free/local.
+    Validate that the configured LLM backend is usable: by default the local
+    Ollama server (running, model pulled), or a hosted API when LLM_PROVIDER
+    is set (key present and accepted).
 
     Returns:
         True if valid, False otherwise
     """
-    ok, errors = settings.validate_ollama()
+    ok, errors = settings.validate_llm()
+    if not ok and settings.provider.is_hosted:
+        for err in errors:
+            logger.error(err)
+        print(f"\nCould not use the {settings.provider.provider} API:")
+        for err in errors:
+            print(f"  - {err}")
+        print("\nCheck LLM_PROVIDER / LLM_API_KEY (and LLM_BASE_URL / LLM_MODEL) in your .env file.")
+        return False
     if not ok:
         for err in errors:
             logger.error(err)

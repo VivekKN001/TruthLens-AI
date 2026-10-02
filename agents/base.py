@@ -11,6 +11,7 @@ from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from config import Settings, settings, LLMConfig
+from utils.citations import clean_citations
 from utils.logger import AgentLogger
 from utils.retry import with_retry, RetryConfig
 
@@ -60,8 +61,32 @@ class BaseAgent(ABC):
         """Load category-specific prompts for this agent"""
         pass
 
-    def _create_llm(self) -> ChatOllama:
-        """Create a local Ollama LLM - no API key, no cost, no rate limit"""
+    def _create_llm(self):
+        """
+        Create the chat model: local Ollama by default (no key, no cost), or a
+        hosted OpenAI-compatible API (Gemini, Groq, ...) when LLM_PROVIDER says so.
+        Both expose the same .invoke()/.stream() interface the rest of this class uses.
+        """
+        provider = self._settings.provider
+        if provider.is_hosted:
+            from langchain_openai import ChatOpenAI
+
+            extra = {}
+            if provider.resolved_reasoning_effort:
+                extra["reasoning_effort"] = provider.resolved_reasoning_effort
+            return ChatOpenAI(
+                model=provider.resolved_model,
+                base_url=provider.resolved_base_url,
+                api_key=provider.api_key or "missing-key",
+                temperature=self._llm_config.temperature,
+                max_tokens=provider.resolved_max_tokens or self._llm_config.max_tokens,
+                # Free tiers rate-limit hard; the OpenAI client waits out each
+                # 429 using the API's retry-after header before giving up.
+                max_retries=5,
+                timeout=180,
+                **extra,
+            )
+
         return ChatOllama(
             model=self._llm_config.model,
             base_url=self._settings.ollama_base_url,
@@ -85,6 +110,29 @@ class BaseAgent(ABC):
         category_lower = category.lower()
         default_prompt = self._prompts.get("default", "")
         return self._prompts.get(category_lower, default_prompt)
+
+    def _clean_citations(self, state, text: str) -> str:
+        """
+        Strip [n] markers that don't point at one of state.research_sources,
+        plus any "Sources" section the model wrote itself (the real numbered
+        list is appended on export), and note what was removed in state.messages.
+
+        Args:
+            state: Current agent state (for the source count and messages)
+            text: Blog post markdown
+
+        Returns:
+            Cleaned blog post markdown
+        """
+        result = clean_citations(text, len(state.research_sources))
+        name = self.AGENT_NAME.capitalize()
+        if result.invalid_numbers:
+            bad = ", ".join(str(n) for n in sorted(set(result.invalid_numbers)))
+            self._logger.warning(f"Removed citations to non-existent source(s): {bad}")
+            state.messages.append(f"{name}: Removed citation(s) to non-existent source(s) [{bad}]")
+        if result.removed_sources_section:
+            state.messages.append(f"{name}: Removed a model-written Sources section (the real list is appended on export)")
+        return result.text
 
     @with_retry(config=RetryConfig(max_attempts=3, base_delay=1.0))
     def _invoke_llm(self, prompt: str, system_prompt: str = "") -> str:
